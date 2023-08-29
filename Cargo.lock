@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "arrform"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7cf566ecc5c9d82b973e81d30babf6583c9b497f86295c952d538c3254ef4e6"
+
+[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -319,6 +325,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "panic-probe"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa6fa5645ef5a760cd340eaa92af9c1ce131c8c09e7f8926d8a24b59d26652b9"
+dependencies = [
+ "cortex-m",
+ "defmt",
+]
+
+[[package]]
 name = "proc-macro-error"
 version = "1.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -394,6 +410,7 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 name = "skatebuddy"
 version = "0.1.0"
 dependencies = [
+ "arrform",
  "bitmap-font",
  "cortex-m",
  "cortex-m-rt",
@@ -401,6 +418,7 @@ dependencies = [
  "defmt-rtt",
  "embedded-graphics",
  "nrf52840-hal",
+ "panic-probe",
 ]
 
 [[package]]
