@@ -1,9 +1,10 @@
 #![no_main]
 #![no_std]
 
+use bitmap_font::TextStyle;
 use defmt_rtt as _;
 use embedded_graphics::prelude::*;
-use embedded_graphics::primitives::*;
+use embedded_graphics::text::Text;
 // global logger
 use nrf52840_hal as _; // memory layout
 use nrf52840_hal::{gpio::Level, prelude::*};
@@ -43,22 +44,26 @@ fn main() -> ! {
     let mut lcd = lpm013m1126c::Display::new(lcd);
 
     let mut s = PinState::Low;
-    backlight.set_state(PinState::Low).unwrap();
-    let mut i = 0;
+    backlight.set_state(PinState::High).unwrap();
+    //let font = bitmap_font::tamzen::FONT_20x40.pixel_double();
+    let font = bitmap_font::tamzen::FONT_20x40_BOLD;
+    let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
     loop {
         lcd.fill(Rgb111::black());
-        Circle::new(Point::new(i, 5), 40)
-            .into_styled(
-                PrimitiveStyleBuilder::new()
-                    .stroke_color(Rgb111::white())
-                    .stroke_width(1)
-                    .fill_color(Rgb111::blue())
-                    .build(),
-            )
-            .draw(&mut lcd)
+        //Circle::new(Point::new(5, i), 40)
+        //    .into_styled(
+        //        PrimitiveStyleBuilder::new()
+        //            .stroke_color(Rgb111::white())
+        //            .stroke_width(1)
+        //            .fill_color(Rgb111::blue())
+        //            .build(),
+        //    )
+        //    .draw(&mut lcd)
+        //    .unwrap();
+        Text::new("Hello Rust!", Point::new(0, 0), style)
+            .draw(&mut lcd.binary())
             .unwrap();
         lcd.present();
-        i = (i + 1) % 175;
 
         util::delay_micros(10_000);
         //delay.delay_us(100_000u32);

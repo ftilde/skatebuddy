@@ -36,6 +36,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
+name = "bitmap-font"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a913752a2be2beed264e0d4af8e279730b2a1d3d7cf19f668ffbb5832e5f311d"
+dependencies = [
+ "embedded-graphics",
+]
+
+[[package]]
 name = "bytemuck"
 version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -385,6 +394,7 @@ checksum = "388a1df253eca08550bef6c72392cfe7c30914bf41df5269b68cbd6ff8f570a3"
 name = "skatebuddy"
 version = "0.1.0"
 dependencies = [
+ "bitmap-font",
  "cortex-m",
  "cortex-m-rt",
  "defmt",

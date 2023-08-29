@@ -1,5 +1,5 @@
 use cortex_m::prelude::*;
-use embedded_graphics::prelude::*;
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
 use nrf52840_hal::{
     gpio::{p0::*, Disconnected, Level, Output, PushPull},
     prelude::*,
@@ -64,41 +64,41 @@ impl Controller {
         }
     }
 
-    fn write_epilog(&mut self) {
-        for _ in 0..16 {
-            let _ = self.sck.set_low();
-            spi_delay();
-            let _ = self.sck.set_high();
-            spi_delay();
-        }
-    }
-
-    pub fn fill(&mut self, vals: u8) {
-        let _ = self.cs.set_high();
-        crate::util::delay_micros(6); //CS settling time
-
-        let v = 0b_001_001_001_001_001_001_001_001 * (vals & 0b111) as u32;
-
-        self.write_bits(0b_100000, 6);
-        self.write_bits(1, 10);
-        for i in 0..176 {
-            for _ in 0..22 {
-                self.write_bits(v, 24);
-            }
-            self.write_bits(i + 2, 16);
-        }
-
-        let _ = self.sck.set_low();
-        let _ = self.mosi.set_low();
-        let _ = self.cs.set_low();
-
-        self.ext_com_flip();
-    }
-
     pub fn ext_com_flip(&mut self) {
         self.ext_com_val = crate::util::flip(self.ext_com_val);
         let _ = self.extcomin.set_state(self.ext_com_val);
     }
+
+    //fn write_epilog(&mut self) {
+    //    for _ in 0..16 {
+    //        let _ = self.sck.set_low();
+    //        spi_delay();
+    //        let _ = self.sck.set_high();
+    //        spi_delay();
+    //    }
+    //}
+
+    //pub fn fill(&mut self, vals: u8) {
+    //    let _ = self.cs.set_high();
+    //    crate::util::delay_micros(6); //CS settling time
+
+    //    let v = 0b_001_001_001_001_001_001_001_001 * (vals & 0b111) as u32;
+
+    //    self.write_bits(0b_100000, 6);
+    //    self.write_bits(1, 10);
+    //    for i in 0..176 {
+    //        for _ in 0..22 {
+    //            self.write_bits(v, 24);
+    //        }
+    //        self.write_bits(i + 2, 16);
+    //    }
+
+    //    let _ = self.sck.set_low();
+    //    let _ = self.mosi.set_low();
+    //    let _ = self.cs.set_low();
+
+    //    self.ext_com_flip();
+    //}
 
     //pub fn clear(&mut self) {
     //    let _ = self.cs.set_high();
@@ -152,6 +152,11 @@ impl Buffer {
     }
 }
 
+pub struct Display {
+    buffer: Buffer,
+    c: Controller,
+}
+
 impl Display {
     pub fn new(c: Controller) -> Self {
         Self {
@@ -196,11 +201,13 @@ impl Display {
 
         self.c.ext_com_flip();
     }
+    pub fn binary(&mut self) -> DisplayBW {
+        DisplayBW { inner: self }
+    }
 }
 
-pub struct Display {
-    buffer: Buffer,
-    c: Controller,
+pub struct DisplayBW<'a> {
+    inner: &'a mut Display,
 }
 
 impl OriginDimensions for Display {
@@ -222,9 +229,36 @@ impl DrawTarget for Display {
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
     {
         for Pixel(pos, color) in pixels {
-            self.buffer.set(pos.x, pos.y, color);
+            self.buffer.set(pos.y, pos.x, color);
         }
         Ok(())
+    }
+}
+
+impl OriginDimensions for DisplayBW<'_> {
+    fn size(&self) -> Size {
+        self.inner.size()
+    }
+}
+
+impl DrawTarget for DisplayBW<'_> {
+    type Color = BinaryColor;
+
+    type Error = core::convert::Infallible;
+
+    fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
+    where
+        I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
+    {
+        self.inner.draw_iter(pixels.into_iter().map(|Pixel(p, v)| {
+            Pixel(
+                p,
+                match v {
+                    BinaryColor::Off => Rgb111::black(),
+                    BinaryColor::On => Rgb111::white(),
+                },
+            )
+        }))
     }
 }
 
