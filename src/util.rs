@@ -1,10 +1,10 @@
 use nrf52840_hal::prelude::PinState;
 
-pub fn exit() -> ! {
-    loop {
-        cortex_m::asm::bkpt();
-    }
-}
+//pub fn exit() -> ! {
+//    loop {
+//        cortex_m::asm::bkpt();
+//    }
+//}
 
 // TODO: Not sure why this is not working better
 pub fn delay_micros(micros: u32) {

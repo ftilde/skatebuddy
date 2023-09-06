@@ -1,20 +1,18 @@
-use cortex_m::prelude::*;
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
-use nrf52840_hal::{
-    gpio::{p0::*, Disconnected, Level, Output, PushPull},
-    prelude::*,
-    Delay,
+use embedded_hal::{
+    blocking::delay::DelayUs,
+    digital::v2::{OutputPin, PinState},
 };
 
 const WIDTH: usize = 176;
 const HEIGHT: usize = 176;
 
-pub struct Controller {
-    cs: P0_05<Output<PushPull>>,
-    extcomin: P0_06<Output<PushPull>>,
-    disp: P0_07<Output<PushPull>>,
-    sck: P0_26<Output<PushPull>>,
-    mosi: P0_27<Output<PushPull>>,
+pub struct Controller<CS, EXTCOMIN, DISP, SCK, MOSI> {
+    cs: CS,
+    extcomin: EXTCOMIN,
+    disp: DISP,
+    sck: SCK,
+    mosi: MOSI,
     ext_com_val: PinState,
 }
 
@@ -26,26 +24,34 @@ fn spi_delay() {
     //cortex_m::asm::nop();
 }
 
-impl Controller {
-    pub fn new(
-        cs: P0_05<Disconnected>,
-        extcomin: P0_06<Disconnected>,
-        disp: P0_07<Disconnected>,
-        sck: P0_26<Disconnected>,
-        mosi: P0_27<Disconnected>,
-        delay: &mut Delay,
+impl<CS: OutputPin, EXTCOMIN: OutputPin, DISP: OutputPin, SCK: OutputPin, MOSI: OutputPin>
+    Controller<CS, EXTCOMIN, DISP, SCK, MOSI>
+{
+    pub fn new<D: DelayUs<u32>>(
+        mut cs: CS,
+        mut extcomin: EXTCOMIN,
+        mut disp: DISP,
+        mut sck: SCK,
+        mut mosi: MOSI,
+        delay: &mut D,
     ) -> Self {
+        let _ = cs.set_low();
+        let _ = extcomin.set_low();
+        let _ = disp.set_low();
+        let _ = sck.set_low();
+        let _ = mosi.set_low();
         let mut s = Self {
-            cs: cs.into_push_pull_output(Level::Low),
-            extcomin: extcomin.into_push_pull_output(Level::Low),
-            disp: disp.into_push_pull_output(Level::Low),
-            sck: sck.into_push_pull_output(Level::Low),
-            mosi: mosi.into_push_pull_output(Level::Low),
+            cs,
+            extcomin,
+            disp,
+            sck,
+            mosi,
             ext_com_val: PinState::High,
         };
-        delay.delay_ms(1u32);
-        s.extcomin.set_state(s.ext_com_val).unwrap();
-        s.disp.set_high().unwrap();
+
+        delay.delay_us(1_000u32);
+        let _ = s.extcomin.set_state(s.ext_com_val);
+        let _ = s.disp.set_high();
         delay.delay_us(200u32);
         s
     }
@@ -152,13 +158,15 @@ impl Buffer {
     }
 }
 
-pub struct Display {
+pub struct Display<CS, EXTCOMIN, DISP, SCK, MOSI> {
     buffer: Buffer,
-    c: Controller,
+    c: Controller<CS, EXTCOMIN, DISP, SCK, MOSI>,
 }
 
-impl Display {
-    pub fn new(c: Controller) -> Self {
+impl<CS: OutputPin, EXTCOMIN: OutputPin, DISP: OutputPin, SCK: OutputPin, MOSI: OutputPin>
+    Display<CS, EXTCOMIN, DISP, SCK, MOSI>
+{
+    pub fn new(c: Controller<CS, EXTCOMIN, DISP, SCK, MOSI>) -> Self {
         Self {
             c,
             buffer: Default::default(),
@@ -201,16 +209,16 @@ impl Display {
 
         self.c.ext_com_flip();
     }
-    pub fn binary(&mut self) -> DisplayBW {
+    pub fn binary(&mut self) -> DisplayBW<CS, EXTCOMIN, DISP, SCK, MOSI> {
         DisplayBW { inner: self }
     }
 }
 
-pub struct DisplayBW<'a> {
-    inner: &'a mut Display,
+pub struct DisplayBW<'a, CS, EXTCOMIN, DISP, SCK, MOSI> {
+    inner: &'a mut Display<CS, EXTCOMIN, DISP, SCK, MOSI>,
 }
 
-impl OriginDimensions for Display {
+impl<CS, EXTCOMIN, DISP, SCK, MOSI> OriginDimensions for Display<CS, EXTCOMIN, DISP, SCK, MOSI> {
     fn size(&self) -> Size {
         Size {
             width: WIDTH as _,
@@ -219,7 +227,7 @@ impl OriginDimensions for Display {
     }
 }
 
-impl DrawTarget for Display {
+impl<CS, EXTCOMIN, DISP, SCK, MOSI> DrawTarget for Display<CS, EXTCOMIN, DISP, SCK, MOSI> {
     type Color = Rgb111;
 
     type Error = core::convert::Infallible;
@@ -235,13 +243,15 @@ impl DrawTarget for Display {
     }
 }
 
-impl OriginDimensions for DisplayBW<'_> {
+impl<CS, EXTCOMIN, DISP, SCK, MOSI> OriginDimensions
+    for DisplayBW<'_, CS, EXTCOMIN, DISP, SCK, MOSI>
+{
     fn size(&self) -> Size {
         self.inner.size()
     }
 }
 
-impl DrawTarget for DisplayBW<'_> {
+impl<CS, EXTCOMIN, DISP, SCK, MOSI> DrawTarget for DisplayBW<'_, CS, EXTCOMIN, DISP, SCK, MOSI> {
     type Color = BinaryColor;
 
     type Error = core::convert::Infallible;

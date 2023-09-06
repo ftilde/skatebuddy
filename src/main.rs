@@ -1,5 +1,6 @@
 #![no_main]
 #![no_std]
+#![feature(type_alias_impl_trait)]
 
 // Potentially useful in the future:
 //
@@ -21,53 +22,42 @@ use defmt_rtt as _; //logger
 use nrf52840_hal as _; // memory layout
 use panic_probe as _; //panic handler
 
-use nrf52840_hal::{gpio::Level, prelude::*};
+//use nrf52840_hal::{gpio::Level, prelude::*};
 
 use crate::lpm013m1126c::Rgb111;
 
 mod lpm013m1126c;
 mod util;
 
-const RTC_RANGE: u32 = 1 << 24;
+use embassy_executor::Spawner;
+use embassy_nrf::gpio::{Level, Output, OutputDrive};
+use embassy_time::{Duration, Instant, Timer};
+use embedded_hal::digital::v2::{OutputPin, PinState};
 
-#[cortex_m_rt::entry]
-fn main() -> ! {
-    defmt::info!("we start, then loop");
+#[embassy_executor::main]
+async fn main(_spawner: Spawner) {
+    let p = embassy_nrf::init(Default::default());
 
-    let core_peripherals = nrf52840_hal::pac::CorePeripherals::take().unwrap();
-    let peripherals = nrf52840_hal::pac::Peripherals::take().unwrap();
-    let p0 = nrf52840_hal::gpio::p0::Parts::new(peripherals.P0);
-    let _button = p0.p0_17.into_pullup_input();
-    let mut backlight = p0.p0_08.into_push_pull_output(Level::Low);
-    let mut delay = nrf52840_hal::Delay::new(core_peripherals.SYST);
+    let cs = Output::new(p.P0_05, Level::Low, OutputDrive::Standard);
+    let extcomin = Output::new(p.P0_06, Level::Low, OutputDrive::Standard);
+    let disp = Output::new(p.P0_07, Level::Low, OutputDrive::Standard);
+    let sck = Output::new(p.P0_26, Level::Low, OutputDrive::Standard);
+    let mosi = Output::new(p.P0_27, Level::Low, OutputDrive::Standard);
 
-    let lcd = lpm013m1126c::Controller::new(
-        p0.p0_05.into(),
-        p0.p0_06.into(),
-        p0.p0_07.into(),
-        p0.p0_26.into(),
-        p0.p0_27.into(),
-        &mut delay,
-    );
+    let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
 
-    let clocks = nrf52840_hal::clocks::Clocks::new(peripherals.CLOCK);
-    clocks.start_lfclk();
-
-    let mut rtc = nrf52840_hal::Rtc::new(peripherals.RTC0, (1 << 12) - 1).unwrap();
-    let mut overflow_counter = 0;
-
-    let rtc_freq = 8;
-    let seconds_per_overflow = RTC_RANGE / 8;
-    rtc.enable_event(nrf52840_hal::rtc::RtcInterrupt::Overflow);
-    rtc.enable_counter();
+    let mut delay = embassy_time::Delay;
+    let lcd = lpm013m1126c::Controller::new(cs, extcomin, disp, sck, mosi, &mut delay);
 
     let mut lcd = lpm013m1126c::Display::new(lcd);
 
     let mut s = PinState::Low;
-    backlight.set_state(PinState::High).unwrap();
+    backlight.set_state(PinState::Low).unwrap();
     //let font = bitmap_font::tamzen::FONT_20x40.pixel_double();
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
+
+    let begin = Instant::now();
     loop {
         lcd.fill(Rgb111::black());
         //Circle::new(Point::new(5, i), 40)
@@ -81,10 +71,8 @@ fn main() -> ! {
         //    .draw(&mut lcd)
         //    .unwrap();
 
-        if rtc.is_event_triggered(nrf52840_hal::rtc::RtcInterrupt::Overflow) {
-            overflow_counter += 1;
-        }
-        let seconds = rtc.get_counter() / rtc_freq + overflow_counter * seconds_per_overflow;
+        let now = begin.elapsed();
+        let seconds = now.as_secs();
 
         let sec_clock = seconds % 60;
         let minutes = seconds / 60;
@@ -96,18 +84,14 @@ fn main() -> ! {
             .draw(&mut lcd.binary())
             .unwrap();
 
-        let text = arrform!(20, "c: {}", rtc.get_counter());
+        let text = arrform!(20, "c: {}", now.as_ticks());
         Text::new(text.as_str(), Point::new(0, 50), style)
-            .draw(&mut lcd.binary())
-            .unwrap();
-        let text = arrform!(20, "o: {}", overflow_counter);
-        Text::new(text.as_str(), Point::new(0, 100), style)
             .draw(&mut lcd.binary())
             .unwrap();
         lcd.present();
 
-        //util::delay_micros(10_000);
-        delay.delay_ms(10_000u32);
+        let interval = Duration::from_millis(10_000);
+        Timer::after(interval).await;
         s = util::flip(s);
         //backlight.set_state(s).unwrap();
     }
