@@ -30,13 +30,27 @@ mod lpm013m1126c;
 mod util;
 
 use embassy_executor::Spawner;
-use embassy_nrf::gpio::{Level, Output, OutputDrive};
+use embassy_nrf::{
+    bind_interrupts,
+    gpio::{Level, Output, OutputDrive},
+    saadc,
+};
 use embassy_time::{Duration, Instant, Timer};
 use embedded_hal::digital::v2::{OutputPin, PinState};
+
+bind_interrupts!(struct Irqs {
+    SAADC => saadc::InterruptHandler;
+});
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
+
+    let config = saadc::Config::default();
+    let channel_config = saadc::ChannelConfig::single_ended(p.P0_03);
+    let mut saadc = saadc::Saadc::new(p.SAADC, Irqs, config, [channel_config]);
+
+    //let button = Input::new(p.P0_17, Pull::High);
 
     let cs = Output::new(p.P0_05, Level::Low, OutputDrive::Standard);
     let extcomin = Output::new(p.P0_06, Level::Low, OutputDrive::Standard);
@@ -88,6 +102,14 @@ async fn main(_spawner: Spawner) {
         Text::new(text.as_str(), Point::new(0, 50), style)
             .draw(&mut lcd.binary())
             .unwrap();
+
+        let mut bat_buf = [0; 1];
+        saadc.sample(&mut bat_buf).await;
+        let text = arrform!(20, "bat: {}", bat_buf[0]);
+        Text::new(text.as_str(), Point::new(0, 100), style)
+            .draw(&mut lcd.binary())
+            .unwrap();
+
         lcd.present();
 
         let interval = Duration::from_millis(10_000);
