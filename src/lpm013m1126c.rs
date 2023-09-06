@@ -71,7 +71,7 @@ impl<CS: OutputPin, EXTCOMIN: OutputPin, DISP: OutputPin, SCK: OutputPin, MOSI: 
     }
 
     pub fn ext_com_flip(&mut self) {
-        self.ext_com_val = crate::util::flip(self.ext_com_val);
+        self.ext_com_val = !self.ext_com_val;
         let _ = self.extcomin.set_state(self.ext_com_val);
     }
 

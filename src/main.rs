@@ -32,7 +32,7 @@ mod util;
 use embassy_executor::Spawner;
 use embassy_nrf::{
     bind_interrupts,
-    gpio::{Level, Output, OutputDrive},
+    gpio::{Input, Level, Output, OutputDrive, Pull},
     saadc,
 };
 use embassy_time::{Duration, Instant, Timer};
@@ -50,7 +50,7 @@ async fn main(_spawner: Spawner) {
     let channel_config = saadc::ChannelConfig::single_ended(p.P0_03);
     let mut saadc = saadc::Saadc::new(p.SAADC, Irqs, config, [channel_config]);
 
-    //let button = Input::new(p.P0_17, Pull::High);
+    let button = Input::new(p.P0_17, Pull::Up);
 
     let cs = Output::new(p.P0_05, Level::Low, OutputDrive::Standard);
     let extcomin = Output::new(p.P0_06, Level::Low, OutputDrive::Standard);
@@ -65,7 +65,6 @@ async fn main(_spawner: Spawner) {
 
     let mut lcd = lpm013m1126c::Display::new(lcd);
 
-    let mut s = PinState::Low;
     backlight.set_state(PinState::Low).unwrap();
     //let font = bitmap_font::tamzen::FONT_20x40.pixel_double();
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
@@ -114,8 +113,12 @@ async fn main(_spawner: Spawner) {
 
         let interval = Duration::from_millis(10_000);
         Timer::after(interval).await;
-        s = util::flip(s);
-        //backlight.set_state(s).unwrap();
+
+        if button.is_low() {
+            let _ = backlight.set_high();
+        } else {
+            let _ = backlight.set_low();
+        }
     }
     //println!("Hello, world!");
 }

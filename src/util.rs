@@ -1,5 +1,3 @@
-use nrf52840_hal::prelude::PinState;
-
 //pub fn exit() -> ! {
 //    loop {
 //        cortex_m::asm::bkpt();
@@ -13,11 +11,4 @@ pub fn delay_micros(micros: u32) {
     const SETUP_OVERHEAD_ESTIMATE: u32 = 10; //TODO actually think about this
     let cycles = micros * FREQ_MHZ - SETUP_OVERHEAD_ESTIMATE;
     cortex_m::asm::delay(cycles);
-}
-
-pub fn flip(i: PinState) -> PinState {
-    match i {
-        PinState::Low => PinState::High,
-        PinState::High => PinState::Low,
-    }
 }
