@@ -36,7 +36,7 @@ use embassy_nrf::{
     gpio::{Input, Level, Output, OutputDrive, Pull},
     saadc,
 };
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Instant, Ticker};
 use embedded_hal::digital::v2::{OutputPin, PinState};
 
 bind_interrupts!(struct Irqs {
@@ -45,7 +45,9 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
-    let p = embassy_nrf::init(Default::default());
+    let mut conf = embassy_nrf::config::Config::default();
+    conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
+    let p = embassy_nrf::init(conf);
 
     let mut battery = battery::Battery::new(p.SAADC, p.P0_03, p.P0_23, p.P0_25);
 
@@ -70,7 +72,12 @@ async fn main(_spawner: Spawner) {
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
     let begin = Instant::now();
+
+    let mut ticker = Ticker::every(Duration::from_secs(1));
+
     loop {
+        let v = battery.read().await;
+
         lcd.fill(Rgb111::black());
         //Circle::new(Point::new(5, i), 40)
         //    .into_styled(
@@ -101,7 +108,6 @@ async fn main(_spawner: Spawner) {
             .draw(&mut lcd.binary())
             .unwrap();
 
-        let v = battery.read().await;
         let text = arrform!(
             20,
             "{} V: {}",
@@ -123,14 +129,13 @@ async fn main(_spawner: Spawner) {
 
         lcd.present();
 
-        let interval = Duration::from_millis(10_000);
-        Timer::after(interval).await;
-
         if button.is_low() {
             let _ = backlight.set_high();
         } else {
             let _ = backlight.set_low();
         }
+
+        ticker.next().await;
     }
     //println!("Hello, world!");
 }
