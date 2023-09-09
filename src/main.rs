@@ -26,6 +26,7 @@ use panic_probe as _; //panic handler
 
 use crate::lpm013m1126c::Rgb111;
 
+mod battery;
 mod lpm013m1126c;
 mod util;
 
@@ -46,9 +47,7 @@ bind_interrupts!(struct Irqs {
 async fn main(_spawner: Spawner) {
     let p = embassy_nrf::init(Default::default());
 
-    let config = saadc::Config::default();
-    let channel_config = saadc::ChannelConfig::single_ended(p.P0_03);
-    let mut saadc = saadc::Saadc::new(p.SAADC, Irqs, config, [channel_config]);
+    let mut battery = battery::Battery::new(p.SAADC, p.P0_03, p.P0_23, p.P0_25);
 
     let button = Input::new(p.P0_17, Pull::Up);
 
@@ -102,10 +101,23 @@ async fn main(_spawner: Spawner) {
             .draw(&mut lcd.binary())
             .unwrap();
 
-        let mut bat_buf = [0; 1];
-        saadc.sample(&mut bat_buf).await;
-        let text = arrform!(20, "bat: {}", bat_buf[0]);
+        let v = battery.read().await;
+        let text = arrform!(
+            20,
+            "{} V: {}",
+            match battery.charge_state() {
+                battery::ChargeState::Full => 'F',
+                battery::ChargeState::Charging => 'C',
+                battery::ChargeState::Draining => 'D',
+            },
+            v.voltage()
+        );
         Text::new(text.as_str(), Point::new(0, 100), style)
+            .draw(&mut lcd.binary())
+            .unwrap();
+
+        let text = arrform!(20, "%: {}", v.percentage());
+        Text::new(text.as_str(), Point::new(0, 130), style)
             .draw(&mut lcd.binary())
             .unwrap();
 
