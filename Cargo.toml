@@ -49,3 +49,4 @@ embassy-nrf = { git = "https://github.com/embassy-rs/embassy.git", features = [
     "gpiote",
     "nightly"
 ]}
+embedded-hal-async = "1.0.0-rc.1"

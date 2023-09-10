@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 #![feature(type_alias_impl_trait)]
+#![feature(async_fn_in_trait)]
 
 // Potentially useful in the future:
 //
@@ -34,20 +35,65 @@ use embassy_executor::Spawner;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Input, Level, Output, OutputDrive, Pull},
-    saadc,
+    saadc, spim,
 };
 use embassy_time::{Duration, Instant, Ticker};
 use embedded_hal::digital::v2::{OutputPin, PinState};
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
+    SPIM3 => spim::InterruptHandler<embassy_nrf::peripherals::SPI3>;
 });
+
+struct SpiDeviceWrapper<'a, T: embassy_nrf::spim::Instance, CS> {
+    spi: embassy_nrf::spim::Spim<'a, T>,
+    cs: CS,
+}
+
+impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi::ErrorType
+    for SpiDeviceWrapper<'a, T, CS>
+{
+    type Error = embedded_hal_async::spi::ErrorKind;
+}
+impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi::SpiDevice
+    for SpiDeviceWrapper<'a, T, CS>
+{
+    async fn transaction(
+        &mut self,
+        operations: &mut [embedded_hal_async::spi::Operation<'_, u8>],
+    ) -> Result<(), embedded_hal_async::spi::ErrorKind> {
+        let _ = self.cs.set_high();
+        for operation in operations {
+            match operation {
+                embedded_hal_async::spi::Operation::Read(_) => todo!(),
+                embedded_hal_async::spi::Operation::Write(buf) => {
+                    self.spi.write_from_ram(buf).await
+                }
+                embedded_hal_async::spi::Operation::Transfer(_, _) => todo!(),
+                embedded_hal_async::spi::Operation::TransferInPlace(_) => todo!(),
+                embedded_hal_async::spi::Operation::DelayUs(_) => todo!(),
+            }
+            .map_err(|_e| embedded_hal_async::spi::ErrorKind::Other)?;
+        }
+        let _ = self.cs.set_low();
+        Ok(())
+    }
+}
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
     let mut conf = embassy_nrf::config::Config::default();
     conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
     let p = embassy_nrf::init(conf);
+
+    let mut config = spim::Config::default();
+    config.frequency = spim::Frequency::M4;
+    config.mode = spim::Mode {
+        polarity: spim::Polarity::IdleLow,
+        phase: spim::Phase::CaptureOnFirstTransition,
+    };
+
+    let spim = spim::Spim::new_txonly(p.SPI3, Irqs, p.P0_26, p.P0_27, config);
 
     let mut battery = battery::Battery::new(p.SAADC, p.P0_03, p.P0_23, p.P0_25);
 
@@ -56,13 +102,16 @@ async fn main(_spawner: Spawner) {
     let cs = Output::new(p.P0_05, Level::Low, OutputDrive::Standard);
     let extcomin = Output::new(p.P0_06, Level::Low, OutputDrive::Standard);
     let disp = Output::new(p.P0_07, Level::Low, OutputDrive::Standard);
-    let sck = Output::new(p.P0_26, Level::Low, OutputDrive::Standard);
-    let mosi = Output::new(p.P0_27, Level::Low, OutputDrive::Standard);
+
+    let spi = SpiDeviceWrapper { spi: spim, cs };
+
+    //let sck = Output::new(p.P0_26, Level::Low, OutputDrive::Standard);
+    //let mosi = Output::new(p.P0_27, Level::Low, OutputDrive::Standard);
 
     let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
 
     let mut delay = embassy_time::Delay;
-    let lcd = lpm013m1126c::Controller::new(cs, extcomin, disp, sck, mosi, &mut delay);
+    let lcd = lpm013m1126c::Controller::new(spi, extcomin, disp, &mut delay);
 
     let mut lcd = lpm013m1126c::Display::new(lcd);
 
@@ -127,7 +176,7 @@ async fn main(_spawner: Spawner) {
             .draw(&mut lcd.binary())
             .unwrap();
 
-        lcd.present();
+        lcd.present().await;
 
         if button.is_low() {
             let _ = backlight.set_high();
