@@ -140,13 +140,23 @@ impl<SPI: embedded_hal_async::spi::SpiDevice, EXTCOMIN: OutputPin, DISP: OutputP
         self.c.ext_com_flip();
     }
 
-    pub fn binary(&mut self) -> DisplayBW<SPI, EXTCOMIN, DISP> {
-        DisplayBW { inner: self }
+    pub fn binary(&mut self, config: BWConfig) -> DisplayBW<SPI, EXTCOMIN, DISP> {
+        DisplayBW {
+            inner: self,
+            config,
+        }
     }
+}
+
+#[derive(Copy, Clone)]
+pub struct BWConfig {
+    pub on: Rgb111,
+    pub off: Rgb111,
 }
 
 pub struct DisplayBW<'a, SPI, EXTCOMIN, DISP> {
     inner: &'a mut Display<SPI, EXTCOMIN, DISP>,
+    config: BWConfig,
 }
 
 impl<SPI, EXTCOMIN, DISP> OriginDimensions for Display<SPI, EXTCOMIN, DISP> {
@@ -193,8 +203,8 @@ impl<SPI, EXTCOMIN, DISP> DrawTarget for DisplayBW<'_, SPI, EXTCOMIN, DISP> {
             Pixel(
                 p,
                 match v {
-                    BinaryColor::Off => Rgb111::black(),
-                    BinaryColor::On => Rgb111::white(),
+                    BinaryColor::Off => self.config.off,
+                    BinaryColor::On => self.config.on,
                 },
             )
         }))

@@ -124,10 +124,15 @@ async fn main(_spawner: Spawner) {
 
     let mut ticker = Ticker::every(Duration::from_secs(1));
 
+    let bw_config = lpm013m1126c::BWConfig {
+        on: Rgb111::black(),
+        off: Rgb111::white(),
+    };
+
     loop {
         let v = battery.read().await;
 
-        lcd.fill(Rgb111::black());
+        lcd.fill(bw_config.off);
         //Circle::new(Point::new(5, i), 40)
         //    .into_styled(
         //        PrimitiveStyleBuilder::new()
@@ -149,12 +154,12 @@ async fn main(_spawner: Spawner) {
 
         let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", hours, min_clock, sec_clock);
         Text::new(text.as_str(), Point::new(0, 0), style)
-            .draw(&mut lcd.binary())
+            .draw(&mut lcd.binary(bw_config))
             .unwrap();
 
         let text = arrform!(20, "c: {}", now.as_ticks());
         Text::new(text.as_str(), Point::new(0, 50), style)
-            .draw(&mut lcd.binary())
+            .draw(&mut lcd.binary(bw_config))
             .unwrap();
 
         let text = arrform!(
@@ -168,12 +173,12 @@ async fn main(_spawner: Spawner) {
             v.voltage()
         );
         Text::new(text.as_str(), Point::new(0, 100), style)
-            .draw(&mut lcd.binary())
+            .draw(&mut lcd.binary(bw_config))
             .unwrap();
 
         let text = arrform!(20, "%: {}", v.percentage());
         Text::new(text.as_str(), Point::new(0, 130), style)
-            .draw(&mut lcd.binary())
+            .draw(&mut lcd.binary(bw_config))
             .unwrap();
 
         lcd.present().await;
