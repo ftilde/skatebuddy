@@ -1,46 +1,23 @@
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
-use embedded_hal::{
-    blocking::delay::DelayUs,
-    digital::v2::{OutputPin, PinState},
-};
+use embedded_hal::{blocking::delay::DelayUs, digital::v2::OutputPin};
 
 const WIDTH: usize = 176;
 const HEIGHT: usize = 176;
 
-pub struct Controller<SPI, EXTCOMIN, DISP> {
+pub struct Controller<SPI, DISP> {
     spi: SPI,
-    extcomin: EXTCOMIN,
     disp: DISP,
-    ext_com_val: PinState,
 }
 
-impl<SPI: embedded_hal_async::spi::SpiDevice, EXTCOMIN: OutputPin, DISP: OutputPin>
-    Controller<SPI, EXTCOMIN, DISP>
-{
-    pub fn new<D: DelayUs<u32>>(
-        spi: SPI,
-        mut extcomin: EXTCOMIN,
-        mut disp: DISP,
-        delay: &mut D,
-    ) -> Self {
-        let _ = extcomin.set_low();
+impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Controller<SPI, DISP> {
+    pub fn new<D: DelayUs<u32>>(spi: SPI, mut disp: DISP, delay: &mut D) -> Self {
         let _ = disp.set_low();
-        let mut s = Self {
-            spi,
-            extcomin,
-            disp,
-            ext_com_val: PinState::High,
-        };
+        let mut s = Self { spi, disp };
 
         delay.delay_us(1_000u32);
-        let _ = s.extcomin.set_state(s.ext_com_val);
         let _ = s.disp.set_high();
         delay.delay_us(200u32);
         s
-    }
-    pub fn ext_com_flip(&mut self) {
-        self.ext_com_val = !self.ext_com_val;
-        let _ = self.extcomin.set_state(self.ext_com_val);
     }
 }
 
@@ -118,15 +95,13 @@ impl Buffer {
     }
 }
 
-pub struct Display<SPI, EXTCOMIN, DISP> {
+pub struct Display<SPI, DISP> {
     buffer: Buffer,
-    c: Controller<SPI, EXTCOMIN, DISP>,
+    c: Controller<SPI, DISP>,
 }
 
-impl<SPI: embedded_hal_async::spi::SpiDevice, EXTCOMIN: OutputPin, DISP: OutputPin>
-    Display<SPI, EXTCOMIN, DISP>
-{
-    pub fn new(c: Controller<SPI, EXTCOMIN, DISP>) -> Self {
+impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Display<SPI, DISP> {
+    pub fn new(c: Controller<SPI, DISP>) -> Self {
         Self {
             c,
             buffer: Default::default(),
@@ -137,10 +112,9 @@ impl<SPI: embedded_hal_async::spi::SpiDevice, EXTCOMIN: OutputPin, DISP: OutputP
     }
     pub async fn present(&mut self) {
         self.c.spi.write(&self.buffer.values).await.unwrap();
-        self.c.ext_com_flip();
     }
 
-    pub fn binary(&mut self, config: BWConfig) -> DisplayBW<SPI, EXTCOMIN, DISP> {
+    pub fn binary(&mut self, config: BWConfig) -> DisplayBW<SPI, DISP> {
         DisplayBW {
             inner: self,
             config,
@@ -154,12 +128,12 @@ pub struct BWConfig {
     pub off: Rgb111,
 }
 
-pub struct DisplayBW<'a, SPI, EXTCOMIN, DISP> {
-    inner: &'a mut Display<SPI, EXTCOMIN, DISP>,
+pub struct DisplayBW<'a, SPI, DISP> {
+    inner: &'a mut Display<SPI, DISP>,
     config: BWConfig,
 }
 
-impl<SPI, EXTCOMIN, DISP> OriginDimensions for Display<SPI, EXTCOMIN, DISP> {
+impl<SPI, DISP> OriginDimensions for Display<SPI, DISP> {
     fn size(&self) -> Size {
         Size {
             width: WIDTH as _,
@@ -168,7 +142,7 @@ impl<SPI, EXTCOMIN, DISP> OriginDimensions for Display<SPI, EXTCOMIN, DISP> {
     }
 }
 
-impl<SPI, EXTCOMIN, DISP> DrawTarget for Display<SPI, EXTCOMIN, DISP> {
+impl<SPI, DISP> DrawTarget for Display<SPI, DISP> {
     type Color = Rgb111;
 
     type Error = core::convert::Infallible;
@@ -184,13 +158,13 @@ impl<SPI, EXTCOMIN, DISP> DrawTarget for Display<SPI, EXTCOMIN, DISP> {
     }
 }
 
-impl<SPI, EXTCOMIN, DISP> OriginDimensions for DisplayBW<'_, SPI, EXTCOMIN, DISP> {
+impl<SPI, DISP> OriginDimensions for DisplayBW<'_, SPI, DISP> {
     fn size(&self) -> Size {
         self.inner.size()
     }
 }
 
-impl<SPI, EXTCOMIN, DISP> DrawTarget for DisplayBW<'_, SPI, EXTCOMIN, DISP> {
+impl<SPI, DISP> DrawTarget for DisplayBW<'_, SPI, DISP> {
     type Color = BinaryColor;
 
     type Error = core::convert::Infallible;

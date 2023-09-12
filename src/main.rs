@@ -100,7 +100,7 @@ async fn main(_spawner: Spawner) {
     let button = Input::new(p.P0_17, Pull::Up);
 
     let cs = Output::new(p.P0_05, Level::Low, OutputDrive::Standard);
-    let extcomin = Output::new(p.P0_06, Level::Low, OutputDrive::Standard);
+    //let extcomin = Output::new(p.P0_06, Level::Low, OutputDrive::Standard);
     let disp = Output::new(p.P0_07, Level::Low, OutputDrive::Standard);
 
     let spi = SpiDeviceWrapper { spi: spim, cs };
@@ -111,7 +111,20 @@ async fn main(_spawner: Spawner) {
     let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
 
     let mut delay = embassy_time::Delay;
-    let lcd = lpm013m1126c::Controller::new(spi, extcomin, disp, &mut delay);
+
+    let lcd = lpm013m1126c::Controller::new(spi, disp, &mut delay);
+
+    let pwm = embassy_nrf::pwm::SimplePwm::new_1ch(p.PWM0, p.P0_06);
+    let prescaler = embassy_nrf::pwm::Prescaler::Div128;
+    let pwm_freq = 120; //Hz
+    let pwm_period = (16_000_000 >> prescaler as u32) / pwm_freq;
+    assert!(pwm_period < 32767);
+    let pwm_period = pwm_period as u16;
+    let duty_cycle = pwm_period / 2;
+    pwm.set_prescaler(prescaler);
+    pwm.set_max_duty(pwm_period);
+    pwm.set_max_duty(duty_cycle);
+    pwm.enable();
 
     let mut lcd = lpm013m1126c::Display::new(lcd);
 
@@ -125,8 +138,8 @@ async fn main(_spawner: Spawner) {
     let mut ticker = Ticker::every(Duration::from_secs(1));
 
     let bw_config = lpm013m1126c::BWConfig {
-        on: Rgb111::black(),
-        off: Rgb111::white(),
+        off: Rgb111::black(),
+        on: Rgb111::white(),
     };
 
     loop {
