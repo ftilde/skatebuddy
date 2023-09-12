@@ -27,9 +27,10 @@ const PIXEL_MASK: u8 = (1 << NUM_BITS_PER_PIXEL) - 1 as u8;
 
 const NUM_PREFIX_BYTES_PER_ROW: usize = 2;
 const NUM_BYTES_PER_ROW: usize = WIDTH / NUM_PIXELS_PER_CELL + NUM_PREFIX_BYTES_PER_ROW;
+const NUM_REQUIRED_SUFFIX_BYTES: usize = 2; // We need 16 more clock cycles after the last row.
 
 struct Buffer {
-    values: [u8; NUM_BYTES_PER_ROW * HEIGHT],
+    values: [u8; NUM_BYTES_PER_ROW * HEIGHT + NUM_REQUIRED_SUFFIX_BYTES],
 }
 
 impl Default for Buffer {
