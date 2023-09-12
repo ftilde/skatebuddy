@@ -93,6 +93,10 @@ async fn main(_spawner: Spawner) {
         phase: spim::Phase::CaptureOnFirstTransition,
     };
 
+    let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
+    let _gps_power = Output::new(p.P0_29, Level::Low, OutputDrive::Standard);
+    let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
+
     let spim = spim::Spim::new_txonly(p.SPI3, Irqs, p.P0_26, p.P0_27, config);
 
     let mut battery = battery::Battery::new(p.SAADC, p.P0_03, p.P0_23, p.P0_25);
