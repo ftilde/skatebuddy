@@ -21,6 +21,11 @@ impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Controller<SPI, D
     }
 }
 
+pub const SPI_MODE: embedded_hal::spi::Mode = embedded_hal::spi::Mode {
+    polarity: embedded_hal::spi::Polarity::IdleLow,
+    phase: embedded_hal::spi::Phase::CaptureOnFirstTransition,
+};
+
 const NUM_PIXELS_PER_CELL: usize = 2;
 const NUM_BITS_PER_PIXEL: usize = 4;
 const PIXEL_MASK: u8 = (1 << NUM_BITS_PER_PIXEL) - 1 as u8;

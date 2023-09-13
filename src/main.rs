@@ -28,6 +28,7 @@ use panic_probe as _; //panic handler
 use crate::lpm013m1126c::Rgb111;
 
 mod battery;
+mod display;
 mod lpm013m1126c;
 mod util;
 
@@ -45,43 +46,8 @@ bind_interrupts!(struct Irqs {
     SPIM3 => spim::InterruptHandler<embassy_nrf::peripherals::SPI3>;
 });
 
-struct SpiDeviceWrapper<'a, T: embassy_nrf::spim::Instance, CS> {
-    spi: embassy_nrf::spim::Spim<'a, T>,
-    cs: CS,
-}
-
-impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi::ErrorType
-    for SpiDeviceWrapper<'a, T, CS>
-{
-    type Error = embedded_hal_async::spi::ErrorKind;
-}
-impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi::SpiDevice
-    for SpiDeviceWrapper<'a, T, CS>
-{
-    async fn transaction(
-        &mut self,
-        operations: &mut [embedded_hal_async::spi::Operation<'_, u8>],
-    ) -> Result<(), embedded_hal_async::spi::ErrorKind> {
-        let _ = self.cs.set_high();
-        for operation in operations {
-            match operation {
-                embedded_hal_async::spi::Operation::Read(_) => todo!(),
-                embedded_hal_async::spi::Operation::Write(buf) => {
-                    self.spi.write_from_ram(buf).await
-                }
-                embedded_hal_async::spi::Operation::Transfer(_, _) => todo!(),
-                embedded_hal_async::spi::Operation::TransferInPlace(_) => todo!(),
-                embedded_hal_async::spi::Operation::DelayUs(_) => todo!(),
-            }
-            .map_err(|_e| embedded_hal_async::spi::ErrorKind::Other)?;
-        }
-        let _ = self.cs.set_low();
-        Ok(())
-    }
-}
-
 #[embassy_executor::main]
-async fn main(_spawner: Spawner) {
+async fn main(spawner: Spawner) {
     let mut conf = embassy_nrf::config::Config::default();
     conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
     let p = embassy_nrf::init(conf);
@@ -97,40 +63,15 @@ async fn main(_spawner: Spawner) {
     let _gps_power = Output::new(p.P0_29, Level::Low, OutputDrive::Standard);
     let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
 
-    let spim = spim::Spim::new_txonly(p.SPI3, Irqs, p.P0_26, p.P0_27, config);
-
     let mut battery = battery::Battery::new(p.SAADC, p.P0_03, p.P0_23, p.P0_25);
 
     let button = Input::new(p.P0_17, Pull::Up);
 
-    let cs = Output::new(p.P0_05, Level::Low, OutputDrive::Standard);
-    //let extcomin = Output::new(p.P0_06, Level::Low, OutputDrive::Standard);
-    let disp = Output::new(p.P0_07, Level::Low, OutputDrive::Standard);
-
-    let spi = SpiDeviceWrapper { spi: spim, cs };
-
-    //let sck = Output::new(p.P0_26, Level::Low, OutputDrive::Standard);
-    //let mosi = Output::new(p.P0_27, Level::Low, OutputDrive::Standard);
+    let mut lcd = display::setup(
+        &spawner, p.SPI3, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
+    );
 
     let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
-
-    let mut delay = embassy_time::Delay;
-
-    let lcd = lpm013m1126c::Controller::new(spi, disp, &mut delay);
-
-    let pwm = embassy_nrf::pwm::SimplePwm::new_1ch(p.PWM0, p.P0_06);
-    let prescaler = embassy_nrf::pwm::Prescaler::Div128;
-    let pwm_freq = 120; //Hz
-    let pwm_period = (16_000_000 >> prescaler as u32) / pwm_freq;
-    assert!(pwm_period < 32767);
-    let pwm_period = pwm_period as u16;
-    let duty_cycle = pwm_period / 2;
-    pwm.set_prescaler(prescaler);
-    pwm.set_max_duty(pwm_period);
-    pwm.set_max_duty(duty_cycle);
-    pwm.enable();
-
-    let mut lcd = lpm013m1126c::Display::new(lcd);
 
     backlight.set_state(PinState::Low).unwrap();
     //let font = bitmap_font::tamzen::FONT_20x40.pixel_double();
@@ -139,7 +80,7 @@ async fn main(_spawner: Spawner) {
 
     let begin = Instant::now();
 
-    let mut ticker = Ticker::every(Duration::from_secs(1));
+    let mut ticker = Ticker::every(Duration::from_secs(60));
 
     let bw_config = lpm013m1126c::BWConfig {
         off: Rgb111::black(),
