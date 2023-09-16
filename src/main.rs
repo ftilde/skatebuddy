@@ -36,15 +36,51 @@ use embassy_executor::Spawner;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Input, Level, Output, OutputDrive, Pull},
-    saadc, spim,
+    saadc, spim, twim,
 };
-use embassy_time::{Duration, Instant, Ticker};
+use embassy_time::{Duration, Instant, Ticker, Timer};
 use embedded_hal::digital::v2::{OutputPin, PinState};
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
     SPIM3 => spim::InterruptHandler<embassy_nrf::peripherals::SPI3>;
+    SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
 });
+
+static TOUCH_COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+#[embassy_executor::task]
+async fn touch_task(
+    twim: embassy_nrf::peripherals::TWISPI0,
+    touch_sda: embassy_nrf::peripherals::P1_01,
+    touch_scl: embassy_nrf::peripherals::P1_02,
+    touch_reset: embassy_nrf::peripherals::P1_03,
+    touch_int: embassy_nrf::peripherals::P1_04,
+) {
+    let mut touch_reset = Output::new(touch_reset, Level::Low, OutputDrive::Standard);
+    let mut touch_int = Input::new(touch_int, Pull::None);
+
+    let config = twim::Config::default();
+    let mut i2c = twim::Twim::new(twim, Irqs, touch_sda, touch_scl, config);
+
+    loop {
+        touch_reset.set_low();
+        Timer::after(Duration::from_millis(20)).await;
+        touch_reset.set_high();
+        Timer::after(Duration::from_millis(200)).await;
+
+        let touch_addr = 0x15;
+        let reg_addr = 0xA5;
+        let reg_val = 0x03;
+        let buf = [reg_addr, reg_val];
+        i2c.write(touch_addr, &buf).await.unwrap();
+
+        touch_int.wait_for_low().await;
+
+        let _prev = TOUCH_COUNTER.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
+        //defmt::println!("Got a touch event! {}", prev);
+    }
+}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -70,6 +106,10 @@ async fn main(spawner: Spawner) {
     let mut lcd = display::setup(
         &spawner, p.SPI3, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
     );
+
+    spawner
+        .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
+        .unwrap();
 
     let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
 
@@ -115,7 +155,8 @@ async fn main(spawner: Spawner) {
             .draw(&mut lcd.binary(bw_config))
             .unwrap();
 
-        let text = arrform!(20, "c: {}", now.as_ticks());
+        let c = TOUCH_COUNTER.load(core::sync::atomic::Ordering::SeqCst);
+        let text = arrform!(20, "c: {}", c);
         Text::new(text.as_str(), Point::new(0, 50), style)
             .draw(&mut lcd.binary(bw_config))
             .unwrap();
