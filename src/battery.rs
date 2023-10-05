@@ -25,7 +25,7 @@ impl<'a> Battery<'a> {
     ) -> Self {
         let mut config = saadc::Config::default();
         config.resolution = saadc::Resolution::_14BIT;
-        //config.oversample = saadc::Oversample::OVER256X;
+        config.oversample = saadc::Oversample::OVER256X;
 
         let mut channel_config = saadc::ChannelConfig::single_ended(bat_val_pin);
         channel_config.reference = saadc::Reference::VDD1_4;
