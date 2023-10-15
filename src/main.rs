@@ -92,6 +92,55 @@ async fn touch_task(
     }
 }
 
+async fn render_top_bar(lcd: &mut display::Display<'_>, battery: &mut battery::Battery<'_>) {
+    let bw_config = lpm013m1126c::BWConfig {
+        off: Rgb111::black(),
+        on: Rgb111::white(),
+    };
+    lcd.fill_lines(bw_config.off, 0..16);
+
+    //let font = embedded_graphics::mono_font::ascii::FONT_9X18;
+    //let style = embedded_graphics::mono_font::MonoTextStyle::new(
+    //    &font,
+    //    embedded_graphics::pixelcolor::BinaryColor::On,
+    //);
+    let font = bitmap_font::tamzen::FONT_8x16_BOLD;
+    let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
+
+    let (time_str, date_str) = if let Some(c) = time::now_local() {
+        use chrono::{Datelike, Timelike};
+        (
+            arrform!(8, "{:0>2}:{:0>2}:{:0>2}", c.hour(), c.minute(), c.second()),
+            arrform!(5, "{:0>2}.{:0>2}", c.day(), c.month(),),
+        )
+    } else {
+        (arrform!(8, "??:??:??"), arrform!(5, "??.??"))
+    };
+
+    let v = battery.read().await;
+
+    let bat = arrform!(
+        4,
+        "{}{:0>2}",
+        match battery.charge_state() {
+            battery::ChargeState::Full => 'F',
+            battery::ChargeState::Charging => 'C',
+            battery::ChargeState::Draining => 'D',
+        },
+        v.percentage() as i32
+    );
+    let text = arrform!(
+        { 8 + 5 + 4 + 6 },
+        "{}   {}   {}",
+        date_str.as_str(),
+        time_str.as_str(),
+        bat.as_str()
+    );
+    Text::new(text.as_str(), Point::new(0, 0), style)
+        .draw(&mut lcd.binary(bw_config))
+        .unwrap();
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut conf = embassy_nrf::config::Config::default();
@@ -167,6 +216,8 @@ async fn main(spawner: Spawner) {
         //    .draw(&mut lcd)
         //    .unwrap();
 
+        render_top_bar(&mut lcd, &mut battery).await;
+
         let now = begin.elapsed();
         let seconds = now.as_secs();
 
@@ -174,27 +225,6 @@ async fn main(spawner: Spawner) {
         let minutes = seconds / 60;
         let min_clock = minutes % 60;
         let hours = minutes / 60;
-
-        if let Some(c) = time::now_local() {
-            use chrono::{Datelike, Timelike};
-            let text = arrform!(
-                20,
-                "{:0>2}.{:0>2}.{:0>4}\n{:0>2}:{:0>2}:{:0>2}",
-                c.day(),
-                c.month(),
-                c.year(),
-                c.hour(),
-                c.minute(),
-                c.second()
-            );
-            Text::new(text.as_str(), Point::new(0, 0), style)
-                .draw(&mut lcd.binary(bw_config))
-                .unwrap();
-        } else {
-            Text::new("Time not synced, yet", Point::new(0, 0), style)
-                .draw(&mut lcd.binary(bw_config))
-                .unwrap();
-        }
 
         let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", hours, min_clock, sec_clock);
         Text::new(text.as_str(), Point::new(0, 50), style)
@@ -218,11 +248,6 @@ async fn main(spawner: Spawner) {
             v.voltage()
         );
         Text::new(text.as_str(), Point::new(0, 100), style)
-            .draw(&mut lcd.binary(bw_config))
-            .unwrap();
-
-        let text = arrform!(20, "%: {}", v.percentage());
-        Text::new(text.as_str(), Point::new(0, 130), style)
             .draw(&mut lcd.binary(bw_config))
             .unwrap();
 

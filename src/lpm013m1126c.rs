@@ -1,3 +1,5 @@
+use core::ops::Range;
+
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
 use embedded_hal::{blocking::delay::DelayUs, digital::v2::OutputPin};
 
@@ -96,9 +98,10 @@ impl Buffer {
         let mask = PIXEL_MASK << shift_amt;
         *v = (*v & !mask) | (val.0 << shift_amt);
     }
-    fn fill(&mut self, val: Rgb111) {
+    fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
         let nv = val.0 | val.0 << NUM_BITS_PER_PIXEL;
-        for r in 0..HEIGHT {
+        assert!(lines.end <= HEIGHT);
+        for r in lines {
             let row_begin = r * NUM_BYTES_PER_ROW + NUM_PREFIX_BYTES_PER_ROW;
             let row_end = (r + 1) * NUM_BYTES_PER_ROW;
             let row = &mut self.values[row_begin..row_end];
@@ -122,7 +125,10 @@ impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Display<SPI, DISP
         }
     }
     pub fn fill(&mut self, val: Rgb111) {
-        self.buffer.fill(val);
+        self.fill_lines(val, 0..HEIGHT);
+    }
+    pub fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
+        self.buffer.fill_lines(val, lines);
     }
     pub async fn present(&mut self) {
         self.c.spi.write(&self.buffer.values).await.unwrap();
