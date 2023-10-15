@@ -7,19 +7,28 @@ use crate::gps;
 #[embassy_executor::task]
 pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
     loop {
-        {
+        let res = {
             let mut gps = gps.on();
-            sync_clock(&mut gps).await;
-        }
-        Timer::after(Duration::from_secs(60 * 60 * 8)).await;
+            sync_clock(&mut gps, Duration::from_secs(60)).await
+        };
+        let next_sync = if res.is_ok() {
+            Duration::from_secs(60 * 60 * 8)
+        } else {
+            Duration::from_secs(60 * 60 * 1)
+        };
+        Timer::after(next_sync).await;
     }
 }
 
-async fn sync_clock(gps: &mut gps::GPS<'_>) {
+async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()> {
     let mut buf = [0u8; 128];
     let mut end = 0;
     let mut done = false;
+    let give_up = Instant::now() + timeout;
     while !done {
+        if give_up < Instant::now() {
+            return Err(());
+        }
         let n_read = gps.read(&mut buf[end..]).await;
         if n_read == 1 && buf[end] == 0xff {
             continue;
@@ -47,6 +56,7 @@ async fn sync_clock(gps: &mut gps::GPS<'_>) {
         }
         end = read_end;
     }
+    Ok(())
 }
 
 fn set_utc_offset(data: nmea::sentences::ZdaData) -> Result<(), ()> {
