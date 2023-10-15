@@ -31,6 +31,7 @@ mod battery;
 mod display;
 mod gps;
 mod lpm013m1126c;
+mod time;
 mod util;
 
 use embassy_executor::Spawner;
@@ -46,7 +47,7 @@ bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
     SPIM3 => spim::InterruptHandler<embassy_nrf::peripherals::SPI3>;
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
-    UARTE0_UART0 => embassy_nrf::uarte::InterruptHandler<gps::UartInstance>;
+    UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<gps::UartInstance>;
 });
 
 static TOUCH_COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
@@ -91,18 +92,6 @@ async fn touch_task(
     }
 }
 
-#[embassy_executor::task]
-async fn gps_task(mut gps: gps::GPSRessources) {
-    let mut gps = gps.on();
-    let mut buf = [0u8; 1];
-    defmt::println!("GPS let's go");
-    loop {
-        gps.read(&mut buf[..]).await;
-        let s = core::str::from_utf8(&buf[..]).unwrap();
-        defmt::println!("GPS: {}", s);
-    }
-}
-
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut conf = embassy_nrf::config::Config::default();
@@ -135,8 +124,17 @@ async fn main(spawner: Spawner) {
         .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
         .unwrap();
 
-    let _gps = gps::GPSRessources::new(p.P0_29, p.P0_30, p.P0_31, p.UARTE0);
-    //spawner.spawn(gps_task(gps)).unwrap();
+    let _gps = gps::GPSRessources::new(
+        p.P0_29,
+        p.P0_31,
+        p.P0_30,
+        p.UARTE0,
+        p.TIMER1,
+        p.PPI_CH1,
+        p.PPI_CH2,
+        p.PPI_GROUP1,
+    );
+    spawner.spawn(time::clock_sync_task(_gps)).unwrap();
 
     let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
 
@@ -177,16 +175,37 @@ async fn main(spawner: Spawner) {
         let min_clock = minutes % 60;
         let hours = minutes / 60;
 
-        let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", hours, min_clock, sec_clock);
-        Text::new(text.as_str(), Point::new(0, 0), style)
-            .draw(&mut lcd.binary(bw_config))
-            .unwrap();
+        if let Some(c) = time::now_local() {
+            use chrono::{Datelike, Timelike};
+            let text = arrform!(
+                20,
+                "{:0>2}.{:0>2}.{:0>4}\n{:0>2}:{:0>2}:{:0>2}",
+                c.day(),
+                c.month(),
+                c.year(),
+                c.hour(),
+                c.minute(),
+                c.second()
+            );
+            Text::new(text.as_str(), Point::new(0, 0), style)
+                .draw(&mut lcd.binary(bw_config))
+                .unwrap();
+        } else {
+            Text::new("Time not synced, yet", Point::new(0, 0), style)
+                .draw(&mut lcd.binary(bw_config))
+                .unwrap();
+        }
 
-        let c = TOUCH_COUNTER.load(core::sync::atomic::Ordering::SeqCst);
-        let text = arrform!(20, "c: {}", c);
+        let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", hours, min_clock, sec_clock);
         Text::new(text.as_str(), Point::new(0, 50), style)
             .draw(&mut lcd.binary(bw_config))
             .unwrap();
+
+        //let c = TOUCH_COUNTER.load(core::sync::atomic::Ordering::SeqCst);
+        //let text = arrform!(20, "c: {}", c);
+        //Text::new(text.as_str(), Point::new(0, 50), style)
+        //    .draw(&mut lcd.binary(bw_config))
+        //    .unwrap();
 
         let text = arrform!(
             20,
