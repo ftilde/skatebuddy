@@ -94,7 +94,7 @@ impl Buffer {
         let in_cell_idx = 1 - (col % NUM_PIXELS_PER_CELL);
 
         let v = &mut self.values[cell_idx];
-        let shift_amt = NUM_PIXELS_PER_CELL * in_cell_idx;
+        let shift_amt = NUM_BITS_PER_PIXEL * in_cell_idx;
         let mask = PIXEL_MASK << shift_amt;
         *v = (*v & !mask) | (val.0 << shift_amt);
     }
