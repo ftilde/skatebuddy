@@ -92,7 +92,12 @@ async fn touch_task(
     }
 }
 
-async fn render_top_bar(lcd: &mut display::Display<'_>, battery: &mut battery::Battery<'_>) {
+async fn render_top_bar(
+    lcd: &mut display::Display<'_>,
+    battery: &mut battery::Battery<'_>,
+    //battery: &mut battery::AccurateBatteryReader,
+    charge_state: &battery::BatteryChargeState<'_>,
+) {
     let bw_config = lpm013m1126c::BWConfig {
         off: Rgb111::black(),
         on: Rgb111::white(),
@@ -122,7 +127,7 @@ async fn render_top_bar(lcd: &mut display::Display<'_>, battery: &mut battery::B
     let bat = arrform!(
         4,
         "{}{:0>2}",
-        match battery.charge_state() {
+        match charge_state.read() {
             battery::ChargeState::Full => 'F',
             battery::ChargeState::Charging => 'C',
             battery::ChargeState::Draining => 'D',
@@ -147,12 +152,8 @@ async fn main(spawner: Spawner) {
     conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
     let p = embassy_nrf::init(conf);
 
-    let mut config = spim::Config::default();
-    config.frequency = spim::Frequency::M4;
-    config.mode = spim::Mode {
-        polarity: spim::Polarity::IdleLow,
-        phase: spim::Phase::CaptureOnFirstTransition,
-    };
+    let mut battery = battery::Battery::new(p.SAADC, p.P0_03);
+    let mut current_reader = { battery::CurrentEstimator::init(battery.read_accurate().await) };
 
     let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
     //let _gps_power = Output::new(p.P0_29, Level::Low, OutputDrive::Standard);
@@ -161,9 +162,10 @@ async fn main(spawner: Spawner) {
     //TODO: figure out accelerometer (maybe some power draw?)
     //TODO: figure out flash
 
-    let mut battery = battery::Battery::new(p.SAADC, p.P0_03, p.P0_23, p.P0_25);
+    //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
+    let battery_charge_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
 
-    let button = Input::new(p.P0_17, Pull::Up);
+    let mut button = Input::new(p.P0_17, Pull::Up);
 
     let mut lcd = display::setup(
         &spawner, p.SPI3, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
@@ -194,15 +196,17 @@ async fn main(spawner: Spawner) {
 
     let begin = Instant::now();
 
-    let mut ticker = Ticker::every(Duration::from_secs(60));
-
     let bw_config = lpm013m1126c::BWConfig {
         off: Rgb111::black(),
         on: Rgb111::white(),
     };
 
+    let mut ticker = Ticker::every(Duration::from_secs(60));
+
     loop {
-        let v = battery.read().await;
+        let v = battery.read_accurate().await;
+        let mua = current_reader.next(v);
+        let mdev = current_reader.deviation();
 
         lcd.fill(bw_config.off);
         //Circle::new(Point::new(5, i), 40)
@@ -216,7 +220,7 @@ async fn main(spawner: Spawner) {
         //    .draw(&mut lcd)
         //    .unwrap();
 
-        render_top_bar(&mut lcd, &mut battery).await;
+        render_top_bar(&mut lcd, &mut battery, &battery_charge_state).await;
 
         let now = begin.elapsed();
         let seconds = now.as_secs();
@@ -227,20 +231,25 @@ async fn main(spawner: Spawner) {
         let hours = minutes / 60;
 
         let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", hours, min_clock, sec_clock);
-        Text::new(text.as_str(), Point::new(0, 50), style)
+        Text::new(text.as_str(), Point::new(0, 80), style)
             .draw(&mut lcd.binary(bw_config))
             .unwrap();
 
         //let c = TOUCH_COUNTER.load(core::sync::atomic::Ordering::SeqCst);
-        //let text = arrform!(20, "c: {}", c);
-        //Text::new(text.as_str(), Point::new(0, 50), style)
-        //    .draw(&mut lcd.binary(bw_config))
-        //    .unwrap();
+        //let mua = battery.current();
+        let text = arrform!(20, "c: {}muA", mua.micro_ampere());
+        Text::new(text.as_str(), Point::new(0, 30), style)
+            .draw(&mut lcd.binary(bw_config))
+            .unwrap();
+        let text = arrform!(20, "s: {}muA", mdev.micro_ampere());
+        Text::new(text.as_str(), Point::new(0, 50), style)
+            .draw(&mut lcd.binary(bw_config))
+            .unwrap();
 
         let text = arrform!(
             20,
             "{} V: {}",
-            match battery.charge_state() {
+            match battery_charge_state.read() {
                 battery::ChargeState::Full => 'F',
                 battery::ChargeState::Charging => 'C',
                 battery::ChargeState::Draining => 'D',
@@ -253,13 +262,15 @@ async fn main(spawner: Spawner) {
 
         lcd.present().await;
 
+        embassy_futures::select::select(ticker.next(), button.wait_for_any_edge()).await;
+
         if button.is_low() {
             let _ = backlight.set_high();
+            let v = battery.read_accurate().await;
+            current_reader.reset(v)
         } else {
             let _ = backlight.set_low();
         }
-
-        ticker.next().await;
     }
     //println!("Hello, world!");
 }

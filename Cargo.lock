@@ -938,6 +938,7 @@ dependencies = [
  "defmt",
  "defmt-rtt",
  "embassy-executor",
+ "embassy-futures",
  "embassy-nrf",
  "embassy-time",
  "embedded-graphics",
