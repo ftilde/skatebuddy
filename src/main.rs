@@ -30,6 +30,7 @@ use crate::lpm013m1126c::Rgb111;
 mod battery;
 mod display;
 mod gps;
+mod hardware;
 mod lpm013m1126c;
 mod time;
 mod util;
@@ -55,10 +56,10 @@ static TOUCH_COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::Atomic
 #[embassy_executor::task]
 async fn touch_task(
     twim: embassy_nrf::peripherals::TWISPI0,
-    touch_sda: embassy_nrf::peripherals::P1_01,
-    touch_scl: embassy_nrf::peripherals::P1_02,
-    touch_reset: embassy_nrf::peripherals::P1_03,
-    touch_int: embassy_nrf::peripherals::P1_04,
+    touch_sda: hardware::touch::SDA,
+    touch_scl: hardware::touch::SCL,
+    touch_reset: hardware::touch::RST,
+    touch_int: hardware::touch::IRQ,
 ) {
     let mut touch_reset = Output::new(touch_reset, Level::Low, OutputDrive::Standard);
     let mut touch_int = Input::new(touch_int, Pull::None);

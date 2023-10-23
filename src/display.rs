@@ -1,6 +1,7 @@
+use crate::hardware::lcd as hw;
 use embassy_nrf::{
     gpio::{Level, Output, OutputDrive},
-    peripherals::{P0_05, P0_06, P0_07, P0_26, P0_27, SPI3},
+    peripherals::SPI3,
     spim,
 };
 use embassy_time::{Duration, Timer};
@@ -61,16 +62,16 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
 }
 
 pub type Display<'a> =
-    lpm013m1126c::Display<SpiDeviceWrapper<'a, SPI3, Output<'a, P0_05>>, Output<'a, P0_07>>;
+    lpm013m1126c::Display<SpiDeviceWrapper<'a, SPI3, Output<'a, hw::CS>>, Output<'a, hw::DISP>>;
 
 pub fn setup(
     spawner: &embassy_executor::Spawner,
     spi: SPI3,
-    cs: P0_05,
-    extcomin: P0_06,
-    disp: P0_07,
-    sck: P0_26,
-    mosi: P0_27,
+    cs: hw::CS,
+    extcomin: hw::EXTCOMIN,
+    disp: hw::DISP,
+    sck: hw::SCK,
+    mosi: hw::MOSI,
 ) -> Display<'static> {
     let mut config = spim::Config::default();
     config.frequency = spim::Frequency::M4;

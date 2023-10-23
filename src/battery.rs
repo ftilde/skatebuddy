@@ -1,6 +1,7 @@
+use crate::hardware::bat as hw;
 use embassy_nrf::{
     gpio::{Input, Pull},
-    peripherals::{P0_03, P0_23, P0_25, SAADC},
+    peripherals::SAADC,
     saadc::{self, Saadc},
 };
 use embassy_time::{Duration, Instant};
@@ -10,8 +11,8 @@ pub struct Battery<'a> {
 }
 
 pub struct BatteryChargeState<'a> {
-    charge_port_pin: Input<'a, P0_23>,
-    charge_complete_pin: Input<'a, P0_25>,
+    charge_port_pin: Input<'a, hw::CHARGING>,
+    charge_complete_pin: Input<'a, hw::FULL>,
 }
 
 pub enum ChargeState {
@@ -21,7 +22,7 @@ pub enum ChargeState {
 }
 
 impl<'a> BatteryChargeState<'a> {
-    pub fn new(charge_port_pin: P0_23, charge_complete_pin: P0_25) -> Self {
+    pub fn new(charge_port_pin: hw::CHARGING, charge_complete_pin: hw::FULL) -> Self {
         let charge_port_pin = Input::new(charge_port_pin, Pull::None);
         let charge_complete_pin = Input::new(charge_complete_pin, Pull::None);
 
@@ -44,7 +45,7 @@ impl<'a> BatteryChargeState<'a> {
 }
 
 impl<'a> Battery<'a> {
-    pub fn new(saadc: SAADC, bat_val_pin: P0_03) -> Self {
+    pub fn new(saadc: SAADC, bat_val_pin: hw::VOLTAGE) -> Self {
         let mut config = saadc::Config::default();
         config.resolution = saadc::Resolution::_14BIT;
         config.oversample = saadc::Oversample::OVER256X;
