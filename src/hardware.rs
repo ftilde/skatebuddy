@@ -56,21 +56,21 @@ pub mod accel {
     use embassy_nrf::peripherals::*;
     pub type SDA = P1_06; //P38
     pub type SCL = P1_05; //P37
-    const ADDR: u8 = 0x1e;
+    pub const ADDR: u8 = 0x1e;
 }
 
 pub mod mag {
     use embassy_nrf::peripherals::*;
     pub type SDA = P1_12; //P44
     pub type SCL = P1_13; //P45
-    const ADDR: u8 = 0x0C;
+    pub const ADDR: u8 = 0x0C;
 }
 
 pub mod pressure {
     use embassy_nrf::peripherals::*;
     pub type SDA = P1_15; //P47
     pub type SCL = P0_02;
-    const ADDR: u8 = 0x76;
+    pub const ADDR: u8 = 0x76;
 }
 
 pub mod flash {
@@ -81,5 +81,5 @@ pub mod flash {
     pub type MISO = P0_13;
     //pub type WP = ??;
     //pub type RST = ??;
-    const SIZE: usize = 4096 * 2048; // 8MB
+    pub const SIZE: usize = 4096 * 2048; // 8MB
 }

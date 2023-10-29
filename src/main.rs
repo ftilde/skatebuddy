@@ -27,6 +27,7 @@ use panic_probe as _; //panic handler
 
 use crate::lpm013m1126c::Rgb111;
 
+mod accel;
 mod battery;
 mod display;
 mod gps;
@@ -48,6 +49,7 @@ bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
     SPIM3 => spim::InterruptHandler<embassy_nrf::peripherals::SPI3>;
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
+    SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI1>;
     UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<gps::UartInstance>;
 });
 
@@ -73,7 +75,7 @@ async fn touch_task(
         touch_reset.set_high();
         Timer::after(Duration::from_millis(200)).await;
 
-        let touch_addr = 0x15;
+        let touch_addr = 0x15; //TODO: use config
 
         //This is something else, but used in espruino.
         //Mabye this is actual sleep?
@@ -90,6 +92,35 @@ async fn touch_task(
 
         let prev = TOUCH_COUNTER.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
         defmt::println!("Got a touch event! {}", prev);
+    }
+}
+
+#[embassy_executor::task]
+async fn accel_task(
+    twim: embassy_nrf::peripherals::TWISPI1,
+    accel_sda: hardware::accel::SDA,
+    accel_scl: hardware::accel::SCL,
+) {
+    let mut accel = crate::accel::AccelRessources::new(twim, accel_sda, accel_scl);
+
+    let config = accel::Config::new();
+    let mut accel = accel.on(config).await;
+
+    let mut ticker = Ticker::every(Duration::from_secs(1));
+    for _ in 0..10 {
+        let reading = accel.reading_nf().await;
+        let reading_hf = accel.reading_hf().await;
+
+        defmt::println!(
+            "Accel: x: {}, y: {}, z: {}, xh: {}, yh: {}, zh: {}",
+            reading.x,
+            reading.y,
+            reading.z,
+            reading_hf.x,
+            reading_hf.y,
+            reading_hf.z
+        );
+        ticker.next().await;
     }
 }
 
@@ -174,6 +205,9 @@ async fn main(spawner: Spawner) {
 
     spawner
         .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
+        .unwrap();
+    spawner
+        .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
         .unwrap();
 
     let _gps = gps::GPSRessources::new(
