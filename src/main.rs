@@ -188,10 +188,21 @@ async fn main(spawner: Spawner) {
     let mut current_reader = { battery::CurrentEstimator::init(battery.read_accurate().await) };
 
     let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
-    //let _gps_power = Output::new(p.P0_29, Level::Low, OutputDrive::Standard);
     let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
 
-    //TODO: figure out accelerometer (maybe some power draw?)
+    // Explicitly "disconnect" the following devices' i2c pins
+    // Heartrate
+    let _unused = Input::new(p.P0_24, Pull::None);
+    let _unused = Input::new(p.P1_00, Pull::None);
+
+    // Mag
+    let _unused = Input::new(p.P1_12, Pull::None);
+    let _unused = Input::new(p.P1_13, Pull::None);
+
+    // pressure
+    let _unused = Input::new(p.P1_15, Pull::None);
+    let _unused = Input::new(p.P0_02, Pull::None);
+
     //TODO: figure out flash
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
