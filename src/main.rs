@@ -45,7 +45,6 @@ use embassy_nrf::{
     saadc, spim, twim,
 };
 use embassy_time::{Duration, Instant, Ticker, Timer};
-use embedded_hal::digital::v2::{OutputPin, PinState};
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
@@ -127,17 +126,12 @@ async fn accel_task(
     }
 }
 
-async fn render_top_bar(
-    lcd: &mut display::Display<'_>,
-    battery: &mut battery::Battery<'_>,
-    //battery: &mut battery::AccurateBatteryReader,
-    charge_state: &battery::BatteryChargeState<'_>,
-) {
+async fn render_top_bar(ctx: &mut Context) {
     let bw_config = lpm013m1126c::BWConfig {
         off: Rgb111::black(),
         on: Rgb111::white(),
     };
-    lcd.fill_lines(bw_config.off, 0..16);
+    ctx.lcd.fill_lines(bw_config.off, 0..16);
 
     //let font = embedded_graphics::mono_font::ascii::FONT_9X18;
     //let style = embedded_graphics::mono_font::MonoTextStyle::new(
@@ -157,12 +151,12 @@ async fn render_top_bar(
         (arrform!(8, "??:??:??"), arrform!(5, "??.??"))
     };
 
-    let v = battery.read().await;
+    let v = ctx.battery.read().await;
 
     let bat = arrform!(
         4,
         "{}{:0>2}",
-        match charge_state.read() {
+        match ctx.bat_state.read() {
             battery::ChargeState::Full => 'F',
             battery::ChargeState::Charging => 'C',
             battery::ChargeState::Draining => 'D',
@@ -177,8 +171,20 @@ async fn render_top_bar(
         bat.as_str()
     );
     Text::new(text.as_str(), Point::new(0, 0), style)
-        .draw(&mut lcd.binary(bw_config))
+        .draw(&mut ctx.lcd.binary(bw_config))
         .unwrap();
+}
+
+struct Context {
+    #[allow(unused)]
+    flash: flash::FlashRessources,
+    bat_state: battery::BatteryChargeState<'static>,
+    battery: battery::Battery<'static>,
+    button: button::Button,
+    backlight: display::Backlight,
+    #[allow(unused)]
+    gps: gps::GPSRessources,
+    lcd: display::Display<'static>,
 }
 
 #[embassy_executor::main]
@@ -206,7 +212,7 @@ async fn main(spawner: Spawner) {
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
 
-    let _flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13);
+    let flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13);
     //{
     //    let addr = 0;
     //    let mut f = flash.on();
@@ -224,22 +230,17 @@ async fn main(spawner: Spawner) {
     //}
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
-    let battery_charge_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
+    let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
 
-    let mut button = button::Button::new(p.P0_17);
+    let button = button::Button::new(p.P0_17);
 
-    let mut lcd = display::setup(
+    let lcd = display::setup(
         &spawner, p.SPI3, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
     );
 
-    spawner
-        .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
-        .unwrap();
-    //spawner
-    //    .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
-    //    .unwrap();
+    let backlight = display::Backlight::new(p.P0_08);
 
-    let _gps = gps::GPSRessources::new(
+    let gps = gps::GPSRessources::new(
         p.P0_29,
         p.P0_31,
         p.P0_30,
@@ -249,12 +250,25 @@ async fn main(spawner: Spawner) {
         p.PPI_CH2,
         p.PPI_GROUP1,
     );
+
+    let mut ctx = Context {
+        backlight,
+        button,
+        bat_state,
+        battery,
+        gps,
+        flash,
+        lcd,
+    };
+
+    spawner
+        .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
+        .unwrap();
+    //spawner
+    //    .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
+    //    .unwrap();
     //spawner.spawn(time::clock_sync_task(_gps)).unwrap();
 
-    let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
-
-    let mut backlight_state = PinState::Low;
-    backlight.set_state(backlight_state).unwrap();
     //let font = bitmap_font::tamzen::FONT_20x40.pixel_double();
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
@@ -269,11 +283,11 @@ async fn main(spawner: Spawner) {
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
     loop {
-        let v = battery.read().await;
+        let v = ctx.battery.read().await;
         let mua = current_reader.next(v);
         let mdev = current_reader.deviation();
 
-        lcd.fill(bw_config.off);
+        ctx.lcd.fill(bw_config.off);
         //Circle::new(Point::new(5, i), 40)
         //    .into_styled(
         //        PrimitiveStyleBuilder::new()
@@ -285,7 +299,7 @@ async fn main(spawner: Spawner) {
         //    .draw(&mut lcd)
         //    .unwrap();
 
-        render_top_bar(&mut lcd, &mut battery, &battery_charge_state).await;
+        render_top_bar(&mut ctx).await;
 
         let now = begin.elapsed();
         let seconds = now.as_secs();
@@ -297,24 +311,24 @@ async fn main(spawner: Spawner) {
 
         let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", hours, min_clock, sec_clock);
         Text::new(text.as_str(), Point::new(0, 80), style)
-            .draw(&mut lcd.binary(bw_config))
+            .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
         //let c = TOUCH_COUNTER.load(core::sync::atomic::Ordering::SeqCst);
         //let mua = battery.current();
         let text = arrform!(20, "c: {}muA", mua.micro_ampere());
         Text::new(text.as_str(), Point::new(0, 30), style)
-            .draw(&mut lcd.binary(bw_config))
+            .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
         let text = arrform!(20, "s: {}muA", mdev.micro_ampere());
         Text::new(text.as_str(), Point::new(0, 50), style)
-            .draw(&mut lcd.binary(bw_config))
+            .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
         let text = arrform!(
             20,
             "{} V: {}",
-            match battery_charge_state.read() {
+            match ctx.bat_state.read() {
                 battery::ChargeState::Full => 'F',
                 battery::ChargeState::Charging => 'C',
                 battery::ChargeState::Draining => 'D',
@@ -322,20 +336,19 @@ async fn main(spawner: Spawner) {
             v.voltage()
         );
         Text::new(text.as_str(), Point::new(0, 100), style)
-            .draw(&mut lcd.binary(bw_config))
+            .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
-        lcd.present().await;
+        ctx.lcd.present().await;
 
         if let embassy_futures::select::Either::Second(d) =
-            embassy_futures::select::select(ticker.next(), button.wait_for_press()).await
+            embassy_futures::select::select(ticker.next(), ctx.button.wait_for_press()).await
         {
             if d > Duration::from_secs(1) {
-                let v = battery.read_accurate().await;
+                let v = ctx.battery.read_accurate().await;
                 current_reader.reset(v)
             } else {
-                backlight_state = !backlight_state;
-                backlight.set_state(backlight_state).unwrap();
+                ctx.backlight.toggle();
             }
         }
     }

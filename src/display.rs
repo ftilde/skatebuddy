@@ -26,6 +26,43 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
     }
 }
 
+pub struct Backlight {
+    level: Level,
+    pin: Output<'static, hw::BL>,
+}
+
+impl Backlight {
+    pub fn new(pin: hw::BL) -> Self {
+        let level = Level::Low;
+        Self {
+            level,
+            pin: Output::new(pin, Level::Low, OutputDrive::Standard),
+        }
+    }
+
+    fn set(&mut self) {
+        self.pin.set_level(self.level);
+    }
+
+    pub fn on(&mut self) {
+        self.level = Level::High;
+        self.set();
+    }
+
+    pub fn off(&mut self) {
+        self.level = Level::Low;
+        self.set();
+    }
+
+    pub fn toggle(&mut self) {
+        self.level = match self.level {
+            Level::Low => Level::High,
+            Level::High => Level::Low,
+        };
+        self.set();
+    }
+}
+
 pub type Display<'a> = lpm013m1126c::Display<
     crate::util::SpiDeviceWrapper<'a, SPI3, Output<'a, hw::CS>>,
     Output<'a, hw::DISP>,
