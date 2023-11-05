@@ -260,6 +260,7 @@ async fn main(spawner: Spawner) {
         flash,
         lcd,
     };
+    ctx.backlight.on();
 
     spawner
         .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
@@ -282,6 +283,7 @@ async fn main(spawner: Spawner) {
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
+    let mut disp_on = true;
     loop {
         let v = ctx.battery.read().await;
         let mua = current_reader.next(v);
@@ -349,8 +351,13 @@ async fn main(spawner: Spawner) {
                 current_reader.reset(v)
             } else {
                 ctx.backlight.toggle();
+                disp_on = !disp_on;
+                if disp_on {
+                    ctx.lcd.on();
+                } else {
+                    ctx.lcd.off();
+                }
             }
         }
     }
-    //println!("Hello, world!");
 }

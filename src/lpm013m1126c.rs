@@ -22,13 +22,13 @@ impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Controller<SPI, D
         s
     }
 
-    //fn set_on(&mut self) {
-    //    let _ = self.disp.set_high();
-    //}
+    fn set_on(&mut self) {
+        let _ = self.disp.set_high();
+    }
 
-    //fn set_off(&mut self) {
-    //    let _ = self.disp.set_low();
-    //}
+    fn set_off(&mut self) {
+        let _ = self.disp.set_low();
+    }
 }
 
 pub const SPI_MODE: embedded_hal::spi::Mode = embedded_hal::spi::Mode {
@@ -134,12 +134,12 @@ impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Display<SPI, DISP
         self.c.spi.write(&self.buffer.values).await.unwrap();
     }
 
-    //pub fn set_on(&mut self) {
-    //    self.c.set_on();
-    //}
-    //pub fn set_off(&mut self) {
-    //    self.c.set_off();
-    //}
+    pub fn set_on(&mut self) {
+        self.c.set_on();
+    }
+    pub fn set_off(&mut self) {
+        self.c.set_off();
+    }
 
     pub fn binary(&mut self, config: BWConfig) -> DisplayBW<SPI, DISP> {
         DisplayBW {
