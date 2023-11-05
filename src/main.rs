@@ -29,6 +29,7 @@ use crate::lpm013m1126c::Rgb111;
 
 mod accel;
 mod battery;
+mod button;
 mod display;
 mod flash;
 mod gps;
@@ -225,7 +226,7 @@ async fn main(spawner: Spawner) {
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
     let battery_charge_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
 
-    let mut button = Input::new(p.P0_17, Pull::Up);
+    let mut button = button::Button::new(p.P0_17);
 
     let mut lcd = display::setup(
         &spawner, p.SPI3, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
@@ -267,7 +268,7 @@ async fn main(spawner: Spawner) {
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
     loop {
-        let v = battery.read_accurate().await;
+        let v = battery.read().await;
         let mua = current_reader.next(v);
         let mdev = current_reader.deviation();
 
@@ -325,14 +326,19 @@ async fn main(spawner: Spawner) {
 
         lcd.present().await;
 
-        embassy_futures::select::select(ticker.next(), button.wait_for_any_edge()).await;
-
-        if button.is_low() {
-            let _ = backlight.set_high();
-            let v = battery.read_accurate().await;
-            current_reader.reset(v)
-        } else {
-            let _ = backlight.set_low();
+        if let embassy_futures::select::Either::Second(r) =
+            embassy_futures::select::select(ticker.next(), button.wait_for_change()).await
+        {
+            match r {
+                button::PRESSED => {
+                    let _ = backlight.set_high();
+                    //let v = battery.read_accurate().await;
+                    //current_reader.reset(v)
+                }
+                button::RELEASED => {
+                    let _ = backlight.set_low();
+                }
+            }
         }
     }
     //println!("Hello, world!");
