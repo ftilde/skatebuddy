@@ -30,12 +30,8 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
         EXTCOMIN_SIG.reset();
         match v {
             ExcominCmd::Run(f) => freq_hz = f,
-            ExcominCmd::Pause => {
-                defmt::println!("Extcomin pause");
-                continue;
-            }
+            ExcominCmd::Pause => continue,
         };
-        defmt::println!("Extcomin run");
 
         let period_us = 1_000_000 / freq_hz;
         let half_period_us = period_us / 2;
