@@ -253,7 +253,8 @@ async fn main(spawner: Spawner) {
 
     let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
 
-    backlight.set_state(PinState::Low).unwrap();
+    let mut backlight_state = PinState::Low;
+    backlight.set_state(backlight_state).unwrap();
     //let font = bitmap_font::tamzen::FONT_20x40.pixel_double();
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
@@ -326,18 +327,15 @@ async fn main(spawner: Spawner) {
 
         lcd.present().await;
 
-        if let embassy_futures::select::Either::Second(r) =
-            embassy_futures::select::select(ticker.next(), button.wait_for_change()).await
+        if let embassy_futures::select::Either::Second(d) =
+            embassy_futures::select::select(ticker.next(), button.wait_for_press()).await
         {
-            match r {
-                button::PRESSED => {
-                    let _ = backlight.set_high();
-                    //let v = battery.read_accurate().await;
-                    //current_reader.reset(v)
-                }
-                button::RELEASED => {
-                    let _ = backlight.set_low();
-                }
+            if d > Duration::from_secs(1) {
+                let v = battery.read_accurate().await;
+                current_reader.reset(v)
+            } else {
+                backlight_state = !backlight_state;
+                backlight.set_state(backlight_state).unwrap();
             }
         }
     }
