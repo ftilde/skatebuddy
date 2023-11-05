@@ -30,6 +30,7 @@ use crate::lpm013m1126c::Rgb111;
 mod accel;
 mod battery;
 mod display;
+mod flash;
 mod gps;
 mod hardware;
 mod lpm013m1126c;
@@ -47,6 +48,7 @@ use embedded_hal::digital::v2::{OutputPin, PinState};
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
+    SPIM2_SPIS2_SPI2 => spim::InterruptHandler<embassy_nrf::peripherals::SPI2>;
     SPIM3 => spim::InterruptHandler<embassy_nrf::peripherals::SPI3>;
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
     SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI1>;
@@ -188,7 +190,7 @@ async fn main(spawner: Spawner) {
     let mut current_reader = { battery::CurrentEstimator::init(battery.read_accurate().await) };
 
     let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
-    let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
+    //let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
 
     // Explicitly "disconnect" the following devices' i2c pins
     // Heartrate
@@ -203,7 +205,22 @@ async fn main(spawner: Spawner) {
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
 
-    //TODO: figure out flash
+    let _flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13);
+    //{
+    //    let addr = 0;
+    //    let mut f = flash.on();
+
+    //    let mut buf = [0xab; 4];
+    //    f.read(addr, &mut buf).await;
+    //    let u = u32::from_le_bytes(buf) + 1;
+    //    defmt::println!("Got flash num: {:?}", buf);
+    //    let buf = u.to_le_bytes();
+    //    defmt::println!("Trying to write: {:?}", buf);
+
+    //    //TODO: well, we will need to reset the page first...
+    //    f.write(addr, &buf).await;
+    //    defmt::println!("Done");
+    //}
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
     let battery_charge_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
@@ -217,9 +234,9 @@ async fn main(spawner: Spawner) {
     spawner
         .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
         .unwrap();
-    spawner
-        .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
-        .unwrap();
+    //spawner
+    //    .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
+    //    .unwrap();
 
     let _gps = gps::GPSRessources::new(
         p.P0_29,
@@ -231,7 +248,7 @@ async fn main(spawner: Spawner) {
         p.PPI_CH2,
         p.PPI_GROUP1,
     );
-    spawner.spawn(time::clock_sync_task(_gps)).unwrap();
+    //spawner.spawn(time::clock_sync_task(_gps)).unwrap();
 
     let mut backlight = Output::new(p.P0_08, Level::Low, OutputDrive::Standard);
 

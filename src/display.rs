@@ -5,44 +5,9 @@ use embassy_nrf::{
     spim,
 };
 use embassy_time::{Duration, Timer};
-use nrf52840_hal::prelude::OutputPin;
+use embedded_hal::digital::v2::PinState;
 
 use crate::lpm013m1126c;
-
-pub struct SpiDeviceWrapper<'a, T: embassy_nrf::spim::Instance, CS> {
-    spi: embassy_nrf::spim::Spim<'a, T>,
-    cs: CS,
-}
-
-impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi::ErrorType
-    for SpiDeviceWrapper<'a, T, CS>
-{
-    type Error = embedded_hal_async::spi::ErrorKind;
-}
-impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi::SpiDevice
-    for SpiDeviceWrapper<'a, T, CS>
-{
-    async fn transaction(
-        &mut self,
-        operations: &mut [embedded_hal_async::spi::Operation<'_, u8>],
-    ) -> Result<(), embedded_hal_async::spi::ErrorKind> {
-        let _ = self.cs.set_high();
-        for operation in operations {
-            match operation {
-                embedded_hal_async::spi::Operation::Read(_) => todo!(),
-                embedded_hal_async::spi::Operation::Write(buf) => {
-                    self.spi.write_from_ram(buf).await
-                }
-                embedded_hal_async::spi::Operation::Transfer(_, _) => todo!(),
-                embedded_hal_async::spi::Operation::TransferInPlace(_) => todo!(),
-                embedded_hal_async::spi::Operation::DelayUs(_) => todo!(),
-            }
-            .map_err(|_e| embedded_hal_async::spi::ErrorKind::Other)?;
-        }
-        let _ = self.cs.set_low();
-        Ok(())
-    }
-}
 
 #[embassy_executor::task]
 async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
@@ -61,8 +26,10 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
     }
 }
 
-pub type Display<'a> =
-    lpm013m1126c::Display<SpiDeviceWrapper<'a, SPI3, Output<'a, hw::CS>>, Output<'a, hw::DISP>>;
+pub type Display<'a> = lpm013m1126c::Display<
+    crate::util::SpiDeviceWrapper<'a, SPI3, Output<'a, hw::CS>>,
+    Output<'a, hw::DISP>,
+>;
 
 pub fn setup(
     spawner: &embassy_executor::Spawner,
@@ -81,7 +48,11 @@ pub fn setup(
     let disp = Output::new(disp, Level::Low, OutputDrive::Standard);
     let spim = spim::Spim::new_txonly(spi, crate::Irqs, sck, mosi, config);
 
-    let spi = SpiDeviceWrapper { spi: spim, cs };
+    let spi = crate::util::SpiDeviceWrapper {
+        spi: spim,
+        cs,
+        on: PinState::High,
+    };
 
     let mut delay = embassy_time::Delay;
     let lcd = lpm013m1126c::Controller::new(spi, disp, &mut delay);
