@@ -281,6 +281,38 @@ async fn display_stuff(ctx: &mut Context) {
     }
 }
 
+async fn get_mag_reading(
+    twim: embassy_nrf::peripherals::TWISPI1,
+    scl: hardware::mag::SCL,
+    sda: hardware::mag::SDA,
+) {
+    // Mag
+    //let mag_sda = Input::new(p.P1_12, Pull::None);
+    //let mag_scl = Input::new(p.P1_13, Pull::None);
+    let mut config = twim::Config::default();
+    config.frequency = embassy_nrf::twim::Frequency::K400;
+    let mut mag_i2c = twim::Twim::new(twim, Irqs, sda, scl, config);
+
+    // Start measurement
+    let cmd = [0x3e];
+    let mut res = [0];
+    mag_i2c
+        .write_read(hardware::mag::ADDR, &cmd, &mut res)
+        .await
+        .unwrap();
+    //defmt::println!("Status after start: {:b}", res[0]);
+    Timer::after(Duration::from_millis(100)).await;
+
+    let cmd = [0x4e];
+    let mut res = [0; 7];
+    mag_i2c
+        .write_read(hardware::mag::ADDR, &cmd, &mut res)
+        .await
+        .unwrap();
+    //defmt::println!("Status after read: {:b}", res[0]);
+    //defmt::println!("Data: {:x}", res[1..]);
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut conf = embassy_nrf::config::Config::default();
