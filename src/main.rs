@@ -179,7 +179,7 @@ struct Context {
     #[allow(unused)]
     flash: flash::FlashRessources,
     bat_state: battery::BatteryChargeState<'static>,
-    battery: battery::Battery<'static>,
+    battery: battery::AsyncBattery,
     button: button::Button,
     backlight: display::Backlight,
     #[allow(unused)]
@@ -210,7 +210,7 @@ async fn display_stuff(ctx: &mut Context) {
     ctx.lcd.on();
     //ctx.backlight.off();
     loop {
-        let v = ctx.battery.read_accurate().await;
+        let v = ctx.battery.read().await;
         let mua = ctx.current_reader.next(v);
         let mdev = ctx.current_reader.deviation();
 
@@ -272,7 +272,7 @@ async fn display_stuff(ctx: &mut Context) {
             embassy_futures::select::select(ticker.next(), ctx.button.wait_for_press()).await
         {
             if d > Duration::from_secs(1) {
-                let v = ctx.battery.read_accurate().await;
+                let v = ctx.battery.read().await;
                 ctx.current_reader.reset(v)
             } else {
                 break;
@@ -321,6 +321,7 @@ async fn main(spawner: Spawner) {
 
     let mut battery = battery::Battery::new(p.SAADC, p.P0_03);
     let current_reader = { battery::CurrentEstimator::init(battery.read_accurate().await) };
+    let battery = battery::AsyncBattery::new(&spawner, battery);
 
     let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
 

@@ -138,38 +138,38 @@ impl Reading {
     }
 }
 
-//static LAST_ASYNC_READING: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-//
-//#[embassy_executor::task]
-//async fn accurate_battery_task(mut battery: Battery<'static>) {
-//    let wait_time = Duration::from_secs(60);
-//
-//    let reading = battery.read_accurate().await;
-//    LAST_ASYNC_READING.store(reading.raw, core::sync::atomic::Ordering::Relaxed);
-//
-//    let mut ticker = embassy_time::Ticker::every(wait_time);
-//    loop {
-//        ticker.next().await;
-//
-//        let reading = battery.read_accurate().await;
-//        LAST_ASYNC_READING.store(reading.raw, core::sync::atomic::Ordering::Relaxed);
-//    }
-//}
-//
-//pub struct AsyncBattery;
-//
-//impl AsyncBattery {
-//    pub fn new(spawner: &embassy_executor::Spawner, battery: Battery<'static>) -> Self {
-//        spawner.spawn(accurate_battery_task(battery)).unwrap();
-//        Self
-//    }
-//
-//    pub async fn read(&mut self) -> Reading {
-//        Reading {
-//            raw: LAST_ASYNC_READING.load(core::sync::atomic::Ordering::Relaxed),
-//        }
-//    }
-//}
+static LAST_ASYNC_READING: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+
+#[embassy_executor::task]
+async fn accurate_battery_task(mut battery: Battery<'static>) {
+    let wait_time = Duration::from_secs(20 * 60);
+
+    let reading = battery.read_accurate().await;
+    LAST_ASYNC_READING.store(reading.raw, core::sync::atomic::Ordering::Relaxed);
+
+    let mut ticker = embassy_time::Ticker::every(wait_time);
+    loop {
+        ticker.next().await;
+
+        let reading = battery.read_accurate().await;
+        LAST_ASYNC_READING.store(reading.raw, core::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+pub struct AsyncBattery;
+
+impl AsyncBattery {
+    pub fn new(spawner: &embassy_executor::Spawner, battery: Battery<'static>) -> Self {
+        spawner.spawn(accurate_battery_task(battery)).unwrap();
+        Self
+    }
+
+    pub async fn read(&mut self) -> Reading {
+        Reading {
+            raw: LAST_ASYNC_READING.load(core::sync::atomic::Ordering::Relaxed),
+        }
+    }
+}
 
 #[allow(unused)]
 pub struct CurrentEstimator {
