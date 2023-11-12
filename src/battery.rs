@@ -2,12 +2,13 @@ use crate::hardware::bat as hw;
 use embassy_nrf::{
     gpio::{Input, Pull},
     peripherals::SAADC,
-    saadc::{self, Saadc},
+    saadc::{self},
 };
 use embassy_time::{Duration, Instant};
 
-pub struct Battery<'a> {
-    saadc: Saadc<'a, 1>,
+pub struct Battery {
+    saadc: SAADC,
+    bat_val_pin: hw::VOLTAGE,
 }
 
 pub struct BatteryChargeState<'a> {
@@ -44,34 +45,40 @@ impl<'a> BatteryChargeState<'a> {
     }
 }
 
-impl<'a> Battery<'a> {
+impl Battery {
     pub fn new(saadc: SAADC, bat_val_pin: hw::VOLTAGE) -> Self {
+        Self { saadc, bat_val_pin }
+    }
+
+    async fn read_sample(&mut self) -> i16 {
         let mut config = saadc::Config::default();
         config.resolution = saadc::Resolution::_14BIT;
         config.oversample = saadc::Oversample::OVER256X;
 
-        let mut channel_config = saadc::ChannelConfig::single_ended(bat_val_pin);
+        let mut channel_config = saadc::ChannelConfig::single_ended(&mut self.bat_val_pin);
         channel_config.reference = saadc::Reference::VDD1_4;
         channel_config.gain = saadc::Gain::GAIN1_4;
         channel_config.time = saadc::Time::_3US;
 
-        let saadc = saadc::Saadc::new(
-            saadc,
+        let mut saadc = saadc::Saadc::new(
+            &mut self.saadc,
             crate::Irqs, /*TODO: not sure if this is correct */
             config,
             [channel_config],
         );
-        Self { saadc }
+
+        let mut bat_buf = [0; 1];
+        saadc.sample(&mut bat_buf).await;
+        bat_buf[0]
     }
 
     pub async fn read_specific_mean(&mut self, n: u32, duration: Duration) -> Reading {
         assert!(n > 0);
         let mut sum = 0;
         for _ in 0..n {
-            let mut bat_buf = [0; 1];
             embassy_time::Timer::after(duration).await;
-            self.saadc.sample(&mut bat_buf).await;
-            sum += (bat_buf[0] as u32) << 8;
+            let sample = self.read_sample().await;
+            sum += (sample as u32) << 8;
         }
         let mean = sum / n;
         Reading { raw: mean << 8 }
@@ -80,10 +87,9 @@ impl<'a> Battery<'a> {
     pub async fn read_specific_median(&mut self, vals: &mut [u32], duration: Duration) -> Reading {
         assert!(vals.len() > 0);
         for v in vals.iter_mut() {
-            let mut bat_buf = [0; 1];
             embassy_time::Timer::after(duration).await;
-            self.saadc.sample(&mut bat_buf).await;
-            *v = bat_buf[0] as u32;
+            let sample = self.read_sample().await;
+            *v = sample as u32;
         }
         //defmt::println!("vals: {:?}", vals);
         let (_, med, _) = vals.select_nth_unstable(vals.len() / 2);
@@ -141,7 +147,7 @@ impl Reading {
 static LAST_ASYNC_READING: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
 
 #[embassy_executor::task]
-async fn accurate_battery_task(mut battery: Battery<'static>) {
+async fn accurate_battery_task(mut battery: Battery) {
     let wait_time = Duration::from_secs(20 * 60);
 
     let reading = battery.read_accurate().await;
@@ -159,7 +165,7 @@ async fn accurate_battery_task(mut battery: Battery<'static>) {
 pub struct AsyncBattery;
 
 impl AsyncBattery {
-    pub fn new(spawner: &embassy_executor::Spawner, battery: Battery<'static>) -> Self {
+    pub fn new(spawner: &embassy_executor::Spawner, battery: Battery) -> Self {
         spawner.spawn(accurate_battery_task(battery)).unwrap();
         Self
     }
