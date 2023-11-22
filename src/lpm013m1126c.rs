@@ -1,35 +1,9 @@
 use core::ops::Range;
 
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
-use embedded_hal::{blocking::delay::DelayUs, digital::v2::OutputPin};
 
 const WIDTH: usize = 176;
 const HEIGHT: usize = 176;
-
-pub struct Controller<SPI, DISP> {
-    spi: SPI,
-    disp: DISP,
-}
-
-impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Controller<SPI, DISP> {
-    pub fn new<D: DelayUs<u32>>(spi: SPI, mut disp: DISP, delay: &mut D) -> Self {
-        let _ = disp.set_low();
-        let mut s = Self { spi, disp };
-
-        delay.delay_us(1_000u32);
-        let _ = s.disp.set_high();
-        delay.delay_us(200u32);
-        s
-    }
-
-    fn set_on(&mut self) {
-        let _ = self.disp.set_high();
-    }
-
-    fn set_off(&mut self) {
-        let _ = self.disp.set_low();
-    }
-}
 
 pub const SPI_MODE: embedded_hal::spi::Mode = embedded_hal::spi::Mode {
     polarity: embedded_hal::spi::Polarity::IdleLow,
@@ -44,7 +18,7 @@ const NUM_PREFIX_BYTES_PER_ROW: usize = 2;
 const NUM_BYTES_PER_ROW: usize = WIDTH / NUM_PIXELS_PER_CELL + NUM_PREFIX_BYTES_PER_ROW;
 const NUM_REQUIRED_SUFFIX_BYTES: usize = 2; // We need 16 more clock cycles after the last row.
 
-struct Buffer {
+pub struct Buffer {
     values: [u8; NUM_BYTES_PER_ROW * HEIGHT + NUM_REQUIRED_SUFFIX_BYTES],
 }
 
@@ -74,7 +48,7 @@ impl Default for Buffer {
 }
 
 impl Buffer {
-    fn set(&mut self, row: i32, col: i32, val: Rgb111) {
+    pub fn set(&mut self, row: i32, col: i32, val: Rgb111) {
         if row < 0 || col < 0 {
             return;
         }
@@ -98,7 +72,7 @@ impl Buffer {
         let mask = PIXEL_MASK << shift_amt;
         *v = (*v & !mask) | (val.0 << shift_amt);
     }
-    fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
+    pub fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
         let nv = val.0 | val.0 << NUM_BITS_PER_PIXEL;
         assert!(lines.end <= HEIGHT);
         for r in lines {
@@ -110,42 +84,19 @@ impl Buffer {
             }
         }
     }
-}
-
-pub struct Display<SPI, DISP> {
-    buffer: Buffer,
-    c: Controller<SPI, DISP>,
-}
-
-impl<SPI: embedded_hal_async::spi::SpiDevice, DISP: OutputPin> Display<SPI, DISP> {
-    pub fn new(c: Controller<SPI, DISP>) -> Self {
-        Self {
-            c,
-            buffer: Default::default(),
-        }
-    }
     pub fn fill(&mut self, val: Rgb111) {
         self.fill_lines(val, 0..HEIGHT);
     }
-    pub fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
-        self.buffer.fill_lines(val, lines);
-    }
-    pub async fn present(&mut self) {
-        self.c.spi.write(&self.buffer.values).await.unwrap();
-    }
 
-    pub fn set_on(&mut self) {
-        self.c.set_on();
-    }
-    pub fn set_off(&mut self) {
-        self.c.set_off();
-    }
-
-    pub fn binary(&mut self, config: BWConfig) -> DisplayBW<SPI, DISP> {
-        DisplayBW {
+    pub fn binary<'b>(&'b mut self, config: BWConfig) -> BufferBW<'b> {
+        BufferBW {
             inner: self,
             config,
         }
+    }
+
+    pub async fn present<'a, SPI: embedded_hal_async::spi::SpiDevice>(&mut self, spi: &mut SPI) {
+        spi.write(&self.values).await.unwrap();
     }
 }
 
@@ -155,12 +106,12 @@ pub struct BWConfig {
     pub off: Rgb111,
 }
 
-pub struct DisplayBW<'a, SPI, DISP> {
-    inner: &'a mut Display<SPI, DISP>,
+pub struct BufferBW<'a> {
+    inner: &'a mut Buffer,
     config: BWConfig,
 }
 
-impl<SPI, DISP> OriginDimensions for Display<SPI, DISP> {
+impl OriginDimensions for Buffer {
     fn size(&self) -> Size {
         Size {
             width: WIDTH as _,
@@ -169,7 +120,7 @@ impl<SPI, DISP> OriginDimensions for Display<SPI, DISP> {
     }
 }
 
-impl<SPI, DISP> DrawTarget for Display<SPI, DISP> {
+impl DrawTarget for Buffer {
     type Color = Rgb111;
 
     type Error = core::convert::Infallible;
@@ -179,19 +130,19 @@ impl<SPI, DISP> DrawTarget for Display<SPI, DISP> {
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
     {
         for Pixel(pos, color) in pixels {
-            self.buffer.set(pos.y, pos.x, color);
+            self.set(pos.y, pos.x, color);
         }
         Ok(())
     }
 }
 
-impl<SPI, DISP> OriginDimensions for DisplayBW<'_, SPI, DISP> {
+impl<'a> OriginDimensions for BufferBW<'a> {
     fn size(&self) -> Size {
         self.inner.size()
     }
 }
 
-impl<SPI, DISP> DrawTarget for DisplayBW<'_, SPI, DISP> {
+impl<'a> DrawTarget for BufferBW<'a> {
     type Color = BinaryColor;
 
     type Error = core::convert::Infallible;

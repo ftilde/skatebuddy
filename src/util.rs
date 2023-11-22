@@ -4,7 +4,7 @@ use nrf52840_hal::prelude::OutputPin;
 
 pub struct SpiDeviceWrapper<'a, T: embassy_nrf::spim::Instance, CS> {
     pub spi: embassy_nrf::spim::Spim<'a, T>,
-    pub cs: CS,
+    pub cs: &'a mut CS,
     pub on: PinState,
 }
 

@@ -1,4 +1,4 @@
-use crate::hardware::lcd as hw;
+use crate::{hardware::lcd as hw, lpm013m1126c::Buffer};
 use embassy_nrf::{
     gpio::{Level, Output, OutputDrive},
     peripherals::SPI3,
@@ -46,74 +46,96 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
     }
 }
 
-type DisplayInner<'a> = lpm013m1126c::Display<
-    crate::util::SpiDeviceWrapper<'a, SPI3, Output<'a, hw::CS>>,
-    Output<'a, hw::DISP>,
->;
-
-pub struct Display<'a> {
-    inner: DisplayInner<'a>,
+pub struct Display {
+    buffer: lpm013m1126c::Buffer,
+    cs: Output<'static, hw::CS>,
+    disp: Output<'static, hw::DISP>,
+    spi: SPI3,
+    sck: hw::SCK,
+    mosi: hw::MOSI,
 }
 
-impl<'a> core::ops::Deref for Display<'a> {
-    type Target = DisplayInner<'a>;
+impl core::ops::Deref for Display {
+    type Target = Buffer;
 
     fn deref(&self) -> &Self::Target {
-        &self.inner
+        &self.buffer
     }
 }
-impl<'a> core::ops::DerefMut for Display<'a> {
+impl core::ops::DerefMut for Display {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.inner
+        &mut self.buffer
     }
 }
 
-impl<'a> Display<'a> {
+impl Display {
     pub fn on(&mut self) {
-        self.inner.set_on();
+        self.disp.set_high();
         EXTCOMIN_SIG.signal(ExcominCmd::Run(DEFAULT_EXCOMIN_FREQ));
     }
 
     pub fn off(&mut self) {
         EXTCOMIN_SIG.signal(ExcominCmd::Pause);
-        self.inner.set_off();
+        self.disp.set_low();
     }
 }
 
-pub fn setup(
-    spawner: &embassy_executor::Spawner,
-    spi: SPI3,
-    cs: hw::CS,
-    extcomin: hw::EXTCOMIN,
-    disp: hw::DISP,
-    sck: hw::SCK,
-    mosi: hw::MOSI,
-) -> Display<'static> {
-    let mut config = spim::Config::default();
-    config.frequency = spim::Frequency::M4;
-    config.mode = lpm013m1126c::SPI_MODE;
+impl Display {
+    pub async fn setup(
+        spawner: &embassy_executor::Spawner,
+        spi: SPI3,
+        cs: hw::CS,
+        extcomin: hw::EXTCOMIN,
+        disp: hw::DISP,
+        sck: hw::SCK,
+        mosi: hw::MOSI,
+    ) -> Display {
+        let disp = Output::new(disp, Level::Low, OutputDrive::Standard);
 
-    let cs = Output::new(cs, Level::Low, OutputDrive::Standard);
-    let disp = Output::new(disp, Level::Low, OutputDrive::Standard);
-    let spim = spim::Spim::new_txonly(spi, crate::Irqs, sck, mosi, config);
+        spawner.spawn(drive_ext_com_in(extcomin)).unwrap();
 
-    let spi = crate::util::SpiDeviceWrapper {
-        spi: spim,
-        cs,
-        on: PinState::High,
-    };
+        let cs = Output::new(cs, Level::Low, OutputDrive::Standard);
 
-    let mut delay = embassy_time::Delay;
-    let lcd = lpm013m1126c::Controller::new(spi, disp, &mut delay);
+        let mut disp = Display {
+            buffer: lpm013m1126c::Buffer::default(),
+            cs,
+            spi,
+            sck,
+            mosi,
+            disp,
+        };
+        Timer::after(Duration::from_micros(1000)).await;
+        disp.on();
+        Timer::after(Duration::from_micros(200)).await;
 
-    spawner.spawn(drive_ext_com_in(extcomin)).unwrap();
+        disp
+    }
 
-    let mut disp = Display {
-        inner: lpm013m1126c::Display::new(lcd),
-    };
-    disp.on();
+    pub async fn present<'a, 'b: 'a>(&'b mut self) {
+        // TODO: even better: we only need to create they handle for flushing of the data!
+        let mut config = spim::Config::default();
+        config.frequency = spim::Frequency::M4;
+        config.mode = lpm013m1126c::SPI_MODE;
+        let spim = spim::Spim::new_txonly(
+            &mut self.spi,
+            crate::Irqs,
+            &mut self.sck,
+            &mut self.mosi,
+            config,
+        );
 
-    disp
+        let mut spi = crate::util::SpiDeviceWrapper {
+            spi: spim,
+            cs: &mut self.cs,
+            on: PinState::High,
+        };
+
+        self.buffer.present(&mut spi).await;
+
+        // Workaround? To make sure the transmission finishes ("stop") before dropping spi
+        // handle and thus disabling the spim peripheral
+        Timer::after(Duration::from_millis(1)).await;
+    }
 }
 
 pub struct Backlight {

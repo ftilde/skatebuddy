@@ -31,7 +31,7 @@ mod accel;
 mod battery;
 mod button;
 mod display;
-mod flash;
+//mod flash;
 mod gps;
 mod hardware;
 mod lpm013m1126c;
@@ -59,17 +59,14 @@ static TOUCH_COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::Atomic
 
 #[embassy_executor::task]
 async fn touch_task(
-    twim: embassy_nrf::peripherals::TWISPI0,
-    touch_sda: hardware::touch::SDA,
-    touch_scl: hardware::touch::SCL,
+    mut twim: embassy_nrf::peripherals::TWISPI0,
+    mut touch_sda: hardware::touch::SDA,
+    mut touch_scl: hardware::touch::SCL,
     touch_reset: hardware::touch::RST,
     touch_int: hardware::touch::IRQ,
 ) {
     let mut touch_reset = Output::new(touch_reset, Level::Low, OutputDrive::Standard);
     let mut touch_int = Input::new(touch_int, Pull::None);
-
-    let config = twim::Config::default();
-    let mut i2c = twim::Twim::new(twim, Irqs, touch_sda, touch_scl, config);
 
     loop {
         touch_reset.set_low();
@@ -86,9 +83,14 @@ async fn touch_task(
         ////This is sleep mode according to official example code (but looks like standby???
         //let reg_addr = 0xA5;
 
-        let reg_val = 0x03;
-        let buf = [reg_addr, reg_val];
-        i2c.write(touch_addr, &buf).await.unwrap();
+        {
+            let config = twim::Config::default();
+            let mut i2c = twim::Twim::new(&mut twim, Irqs, &mut touch_sda, &mut touch_scl, config);
+
+            let reg_val = 0x03;
+            let buf = [reg_addr, reg_val];
+            i2c.write(touch_addr, &buf).await.unwrap();
+        }
 
         touch_int.wait_for_low().await;
 
@@ -177,16 +179,17 @@ async fn render_top_bar(ctx: &mut Context) {
 
 struct Context {
     #[allow(unused)]
-    flash: flash::FlashRessources,
+    //flash: flash::FlashRessources,
     bat_state: battery::BatteryChargeState<'static>,
     battery: battery::AsyncBattery,
     button: button::Button,
     backlight: display::Backlight,
     #[allow(unused)]
     gps: gps::GPSRessources,
-    lcd: display::Display<'static>,
+    lcd: display::Display,
     current_reader: battery::CurrentEstimator,
     start_time: Instant,
+    //dcb: cortex_m::peripheral::DCB,
 }
 
 async fn idle(ctx: &mut Context) {
@@ -266,6 +269,12 @@ async fn display_stuff(ctx: &mut Context) {
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
+        let ccnt = cortex_m::peripheral::DWT::cycle_count();
+        let text = arrform!(20, "CCNT: {}", ccnt);
+        Text::new(text.as_str(), Point::new(0, 140), style)
+            .draw(&mut ctx.lcd.binary(bw_config))
+            .unwrap();
+
         ctx.lcd.present().await;
 
         if let embassy_futures::select::Either::Second(d) =
@@ -317,12 +326,15 @@ async fn get_mag_reading(
 async fn main(spawner: Spawner) {
     let mut conf = embassy_nrf::config::Config::default();
     conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
+    conf.dcdc.reg1 = true;
+    //let core_p = cortex_m::Peripherals::take().unwrap();
     let p = embassy_nrf::init(conf);
 
     let mut battery = battery::Battery::new(p.SAADC, p.P0_03);
     let current_reader = { battery::CurrentEstimator::init(battery.read_accurate().await) };
     let battery = battery::AsyncBattery::new(&spawner, battery);
 
+    // Keep hrm in reset to power it off
     let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
 
     // Explicitly "disconnect" the following devices' i2c pins
@@ -338,7 +350,10 @@ async fn main(spawner: Spawner) {
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
 
-    let flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13);
+    let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
+    let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
+
+    //let flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13);
     //{
     //    let addr = 0;
     //    let mut f = flash.on();
@@ -360,9 +375,10 @@ async fn main(spawner: Spawner) {
 
     let button = button::Button::new(p.P0_17);
 
-    let lcd = display::setup(
+    let lcd = display::Display::setup(
         &spawner, p.SPI3, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
-    );
+    )
+    .await;
 
     let backlight = display::Backlight::new(p.P0_08);
 
@@ -383,11 +399,17 @@ async fn main(spawner: Spawner) {
         bat_state,
         battery,
         gps,
-        flash,
+        //flash,
         lcd,
         current_reader,
         start_time: Instant::now(),
+        //dcb: core_p.DCB,
     };
+
+    //let foo = unsafe { nrf52840_hal::pac::Peripherals::steal() };
+    //defmt::println!("mrs: {:b}", foo.POWER.mainregstatus.read().bits());
+    //defmt::println!("dcd: {:b}", foo.POWER.dcdcen.read().bits());
+    //defmt::println!("dcd0: {:b}", foo.POWER.dcdcen0.read().bits());
 
     spawner
         .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
