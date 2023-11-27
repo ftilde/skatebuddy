@@ -31,7 +31,7 @@ mod accel;
 mod battery;
 mod button;
 mod display;
-//mod flash;
+mod flash;
 mod gps;
 mod hardware;
 mod lpm013m1126c;

@@ -8,27 +8,6 @@ use embedded_hal_async::spi::{Operation, SpiDevice};
 
 type SPIInstance = embassy_nrf::peripherals::SPI2;
 
-struct FlashHardware {
-    spim: crate::util::SpiDeviceWrapper<'static, SPIInstance, Output<'static, hw::CS>>,
-}
-
-impl FlashHardware {
-    async fn read_status_reg(&mut self) -> Reg1 {
-        let cmd = StatusReg::Reg1 as u8;
-        let mut out = 0;
-        let mut operations = [
-            Operation::Write(core::slice::from_ref(&cmd)),
-            Operation::Read(core::slice::from_mut(&mut out)),
-        ];
-        self.spim.transaction(&mut operations).await.unwrap();
-        Reg1(out)
-    }
-    async fn write_enable(&mut self) {
-        let cmd = [0x06];
-        self.spim.write(&cmd).await.unwrap();
-    }
-}
-
 struct Reg1(u8);
 impl Reg1 {
     fn wel(&self) -> bool {
@@ -47,59 +26,97 @@ enum StatusReg {
 }
 
 pub struct FlashRessources {
-    hw: FlashHardware,
+    instance: SPIInstance,
+    cs: Output<'static, hw::CS>,
+    sck: hw::SCK,
+    mosi: hw::MOSI,
+    miso: hw::MISO,
 }
 
 impl FlashRessources {
-    pub fn new(spi: SPIInstance, cs: hw::CS, sck: hw::SCK, mosi: hw::MOSI, miso: hw::MISO) -> Self {
+    pub fn new(
+        instance: SPIInstance,
+        cs: hw::CS,
+        sck: hw::SCK,
+        mosi: hw::MOSI,
+        miso: hw::MISO,
+    ) -> Self {
+        //TODO: enter sleep mode
+
+        let cs = Output::new(cs, Level::High, OutputDrive::Standard);
+
+        let s = Self {
+            instance,
+            cs,
+            sck,
+            mosi,
+            miso,
+        };
+        s
+    }
+
+    pub fn on<'a>(&'a mut self) -> Flash<'a> {
         let mut config = spim::Config::default();
         config.frequency = spim::Frequency::M8; //TODO: Maybe we can make this faster
         config.mode = spim::MODE_0;
 
-        let cs = Output::new(cs, Level::High, OutputDrive::Standard);
-        let spim = spim::Spim::new(spi, crate::Irqs, sck, miso, mosi, config);
+        let spim = spim::Spim::new(
+            &mut self.instance,
+            crate::Irqs,
+            &mut self.sck,
+            &mut self.miso,
+            &mut self.mosi,
+            config,
+        );
 
         let spim = crate::util::SpiDeviceWrapper {
             spi: spim,
-            cs,
+            cs: &mut self.cs,
             on: PinState::Low,
         };
 
-        //TODO: enter sleep mode
-
-        Self {
-            hw: FlashHardware { spim },
-        }
-    }
-
-    pub fn on<'a>(&'a mut self) -> Flash<'a> {
         //TODO: leave sleep mode
-        Flash { hw: &mut self.hw }
+        Flash { spim }
     }
 }
 
 pub struct Flash<'a> {
-    hw: &'a mut FlashHardware,
+    spim: crate::util::SpiDeviceWrapper<'a, SPIInstance, Output<'static, hw::CS>>,
 }
 
 impl<'a> Flash<'a> {
+    async fn read_status_reg(&mut self) -> Reg1 {
+        let cmd = StatusReg::Reg1 as u8;
+        let mut out = 0;
+        let mut operations = [
+            Operation::Write(core::slice::from_ref(&cmd)),
+            Operation::Read(core::slice::from_mut(&mut out)),
+        ];
+        self.spim.transaction(&mut operations).await.unwrap();
+        Reg1(out)
+    }
+    async fn write_enable(&mut self) {
+        let cmd = [0x06];
+        self.spim.write(&cmd).await.unwrap();
+    }
+
     pub async fn read(&mut self, addr: u32 /*actually 24 bit*/, out: &mut [u8]) {
         let mut cmd = addr.to_be_bytes();
         cmd[0] = 0x03;
         let mut operations = [Operation::Write(&cmd), Operation::Read(out)];
-        self.hw.spim.transaction(&mut operations).await.unwrap();
+        self.spim.transaction(&mut operations).await.unwrap();
     }
 
     pub async fn write(&mut self, addr: u32 /*actually 24 bit*/, buf: &[u8]) {
         assert!(buf.len() <= 256);
 
         loop {
-            let reg = self.hw.read_status_reg().await;
+            let reg = self.read_status_reg().await;
             if reg.wip() {
                 continue; //TODO: sleep here for a bit?
             }
             if !reg.wel() {
-                self.hw.write_enable().await;
+                self.write_enable().await;
             }
             break;
         }
@@ -107,10 +124,10 @@ impl<'a> Flash<'a> {
         let mut cmd = addr.to_be_bytes();
         cmd[0] = 0x02;
         let mut operations = [Operation::Write(&cmd), Operation::Write(&buf)];
-        self.hw.spim.transaction(&mut operations).await.unwrap();
+        self.spim.transaction(&mut operations).await.unwrap();
 
         loop {
-            let reg = self.hw.read_status_reg().await;
+            let reg = self.read_status_reg().await;
             if reg.wip() {
                 defmt::println!("still wip");
                 continue;
