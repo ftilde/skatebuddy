@@ -5,17 +5,34 @@ use bitvec::prelude::*;
 
 type I2CInstance = embassy_nrf::peripherals::TWISPI1;
 
-struct AccelHardware {
-    i2c: twim::Twim<'static, I2CInstance>,
-}
-
 const ADDR_CNTL1: u8 = 0x18;
 //const ADDR_CNTL2: u8 = 0x19;
 
 const ADDR_XHPL: u8 = 0x00;
 const ADDR_XOUTL: u8 = 0x06;
 
-impl AccelHardware {
+pub struct AccelRessources {
+    instance: I2CInstance,
+    sda: hw::SDA,
+    scl: hw::SCL,
+}
+
+impl AccelRessources {
+    pub fn new(instance: I2CInstance, sda: hw::SDA, scl: hw::SCL) -> Self {
+        Self { instance, sda, scl }
+    }
+
+    pub async fn on(&mut self, config: Config) -> Accel {
+        Accel::new(self, config).await
+    }
+}
+
+pub struct Accel<'a> {
+    i2c: twim::Twim<'a, I2CInstance>, //TODO: We don't want to hold on to this
+    config: Config,
+}
+
+impl<'a> Accel<'a> {
     pub async fn read_registers(&mut self, r_addr: u8, r_buf: &mut [u8]) {
         let wbuf = [r_addr];
 
@@ -26,47 +43,33 @@ impl AccelHardware {
 
         self.i2c.write(hw::ADDR, &wbuf).await.unwrap();
     }
-}
 
-pub struct AccelRessources {
-    hw: AccelHardware,
-}
+    async fn new(hw: &'a mut AccelRessources, config: Config) -> Accel<'a> {
+        let mut i2c_conf = twim::Config::default();
+        i2c_conf.frequency = embassy_nrf::twim::Frequency::K400;
 
-impl AccelRessources {
-    pub fn new(twim: I2CInstance, accel_sda: hw::SDA, accel_scl: hw::SCL) -> Self {
-        let mut config = twim::Config::default();
-        config.frequency = embassy_nrf::twim::Frequency::K400;
+        let i2c = twim::Twim::new(
+            &mut hw.instance,
+            crate::Irqs,
+            &mut hw.sda,
+            &mut hw.scl,
+            i2c_conf,
+        );
 
-        let i2c = twim::Twim::new(twim, crate::Irqs, accel_sda, accel_scl, config);
-        let hw = AccelHardware { i2c };
-        Self { hw }
-    }
-
-    pub async fn on(&mut self, config: Config) -> Accel {
-        Accel::new(&mut self.hw, config).await
-    }
-}
-
-pub struct Accel<'a> {
-    hw: &'a mut AccelHardware,
-    config: Config,
-}
-
-impl<'a> Accel<'a> {
-    async fn new(hw: &'a mut AccelHardware, config: Config) -> Accel<'a> {
         let v = config.cntl1.as_raw_slice()[0];
-        hw.write_register(ADDR_CNTL1, v).await;
+        let mut s = Self { i2c, config };
+        s.write_register(ADDR_CNTL1, v).await;
 
         //Wait for startup
         //TODO: could be more specific basd on config... meh...
         embassy_time::Timer::after(embassy_time::Duration::from_millis(81)).await;
 
-        Self { hw, config }
+        s
     }
 
     async fn reading_from(&mut self, base_reg: u8) -> Reading {
         let mut r_buf = [0u8; 6];
-        self.hw.read_registers(base_reg, &mut r_buf).await;
+        self.read_registers(base_reg, &mut r_buf).await;
 
         Reading {
             x: i16::from_le_bytes(r_buf[0..2].try_into().unwrap()),
@@ -98,7 +101,7 @@ impl<'a> Drop for Accel<'a> {
 
         let wbuf = [ADDR_CNTL1, cntl1.as_raw_slice()[0]];
 
-        self.hw.i2c.blocking_write(hw::ADDR, &wbuf).unwrap();
+        self.i2c.blocking_write(hw::ADDR, &wbuf).unwrap();
     }
 }
 
