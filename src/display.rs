@@ -14,7 +14,7 @@ enum ExcominCmd {
     Pause,
 }
 
-const DEFAULT_EXCOMIN_FREQ: u64 = 2;
+const DEFAULT_EXCOMIN_FREQ: u64 = 12;
 static EXTCOMIN_SIG: embassy_sync::signal::Signal<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     ExcominCmd,
@@ -23,6 +23,12 @@ static EXTCOMIN_SIG: embassy_sync::signal::Signal<
 #[embassy_executor::task]
 async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
     let mut pin = Output::new(pin, Level::Low, OutputDrive::Standard);
+
+    // Reserve some time to do actual calculation, wake up, scheduling, etc.
+    let calc_period_estimated = Duration::from_micros(10);
+
+    //Minimum time according to data sheet
+    let wait_period_high = Duration::from_micros(2);
 
     loop {
         let freq_hz;
@@ -34,13 +40,14 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
         };
 
         let period_us = 1_000_000 / freq_hz;
-        let half_period_us = period_us / 2;
-        let wait_period = Duration::from_micros(half_period_us);
+        let period = Duration::from_micros(period_us) - calc_period_estimated;
+
+        let wait_period_low = period - wait_period_high;
 
         while !EXTCOMIN_SIG.signaled() {
-            Timer::after(wait_period).await;
+            Timer::after(wait_period_low).await;
             pin.set_high();
-            Timer::after(wait_period).await;
+            Timer::after(wait_period_high).await;
             pin.set_low();
         }
     }
