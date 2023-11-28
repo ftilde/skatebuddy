@@ -350,25 +350,25 @@ async fn main(spawner: Spawner) {
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
 
-    let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
+    //let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
     let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
 
-    //let flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13);
-    //{
-    //    let addr = 0;
-    //    let mut f = flash.on();
+    let flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13).await;
+    {
+        //let addr = 0;
+        //let mut f = flash.on().await;
 
-    //    let mut buf = [0xab; 4];
-    //    f.read(addr, &mut buf).await;
-    //    let u = u32::from_le_bytes(buf) + 1;
-    //    defmt::println!("Got flash num: {:?}", buf);
-    //    let buf = u.to_le_bytes();
-    //    defmt::println!("Trying to write: {:?}", buf);
+        //let mut buf = [0xab; 4];
+        //f.read(addr, &mut buf).await;
+        //defmt::println!("Got flash num: {:?}", buf);
+        //let u = u32::from_le_bytes(buf) + 1;
+        //let buf = u.to_le_bytes();
+        //defmt::println!("Trying to write: {:?}", buf);
 
-    //    //TODO: well, we will need to reset the page first...
-    //    f.write(addr, &buf).await;
-    //    defmt::println!("Done");
-    //}
+        //TODO: well, we will need to reset the page first...
+        //f.write(addr, &buf).await;
+        //defmt::println!("Done");
+    }
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
     let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
