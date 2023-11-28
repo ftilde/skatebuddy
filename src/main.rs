@@ -111,7 +111,7 @@ async fn accel_task(
     let mut accel = accel.on(config).await;
 
     let mut ticker = Ticker::every(Duration::from_secs(1));
-    for _ in 0..10 {
+    for _ in 0..1 {
         let reading = accel.reading_nf().await;
         let reading_hf = accel.reading_hf().await;
 
@@ -413,6 +413,10 @@ async fn main(spawner: Spawner) {
 
     spawner
         .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
+        .unwrap();
+
+    spawner
+        .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
         .unwrap();
 
     loop {
