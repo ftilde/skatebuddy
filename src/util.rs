@@ -24,9 +24,7 @@ impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi:
         for operation in operations {
             match operation {
                 embedded_hal_async::spi::Operation::Read(buf) => self.spi.read(buf).await,
-                embedded_hal_async::spi::Operation::Write(buf) => {
-                    self.spi.write_from_ram(buf).await
-                }
+                embedded_hal_async::spi::Operation::Write(buf) => self.spi.write(buf).await,
                 embedded_hal_async::spi::Operation::Transfer(bin, bout) => {
                     self.spi.transfer(bin, bout).await
                 }

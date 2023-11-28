@@ -3,6 +3,7 @@ use embassy_nrf::{
     gpio::{Level, Output, OutputDrive},
     spim,
 };
+use embassy_time::{Duration, Timer};
 use embedded_hal::digital::v2::PinState;
 use embedded_hal_async::spi::{Operation, SpiDevice};
 
@@ -34,28 +35,30 @@ pub struct FlashRessources {
 }
 
 impl FlashRessources {
-    pub fn new(
+    pub async fn new(
         instance: SPIInstance,
         cs: hw::CS,
         sck: hw::SCK,
         mosi: hw::MOSI,
         miso: hw::MISO,
     ) -> Self {
-        //TODO: enter sleep mode
-
         let cs = Output::new(cs, Level::High, OutputDrive::Standard);
 
-        let s = Self {
+        let mut s = Self {
             instance,
             cs,
             sck,
             mosi,
             miso,
         };
+        {
+            let _ = s.on().await;
+            // Drop the handle and thus enter deep sleep
+        }
         s
     }
 
-    pub fn on<'a>(&'a mut self) -> Flash<'a> {
+    pub async fn on<'a>(&'a mut self) -> Flash<'a> {
         let mut config = spim::Config::default();
         config.frequency = spim::Frequency::M8; //TODO: Maybe we can make this faster
         config.mode = spim::MODE_0;
@@ -75,8 +78,9 @@ impl FlashRessources {
             on: PinState::Low,
         };
 
-        //TODO: leave sleep mode
-        Flash { spim }
+        let mut s = Flash { spim };
+        s.wake_up_from_deep_sleep().await;
+        s
     }
 }
 
@@ -85,6 +89,24 @@ pub struct Flash<'a> {
 }
 
 impl<'a> Flash<'a> {
+    //ONLY used internally
+    async fn enter_deep_sleep(&mut self) {
+        self.wait_idle().await;
+
+        // Deep Power-Down command
+        self.spim.write(&[0xb9]).await.unwrap();
+    }
+
+    //ONLY used internally
+    async fn wake_up_from_deep_sleep(&mut self) {
+        self.wait_idle().await;
+
+        // Release from Deep Power-Down and Read Device ID command
+        self.spim.write(&[0xab]).await.unwrap();
+        // Wait for t_RES1, i.e. the wake up
+        Timer::after(Duration::from_micros(20)).await;
+    }
+
     async fn read_status_reg(&mut self) -> Reg1 {
         let cmd = StatusReg::Reg1 as u8;
         let mut out = 0;
@@ -107,18 +129,22 @@ impl<'a> Flash<'a> {
         self.spim.transaction(&mut operations).await.unwrap();
     }
 
+    pub async fn wait_idle(&mut self) -> Reg1 {
+        loop {
+            let reg = self.read_status_reg().await;
+            if !reg.wip() {
+                return reg;
+            }
+            //TODO: sleep for a bit?
+        }
+    }
+
     pub async fn write(&mut self, addr: u32 /*actually 24 bit*/, buf: &[u8]) {
         assert!(buf.len() <= 256);
 
-        loop {
-            let reg = self.read_status_reg().await;
-            if reg.wip() {
-                continue; //TODO: sleep here for a bit?
-            }
-            if !reg.wel() {
-                self.write_enable().await;
-            }
-            break;
+        let reg = self.wait_idle().await;
+        if !reg.wel() {
+            self.write_enable().await;
         }
 
         let mut cmd = addr.to_be_bytes();
@@ -126,19 +152,15 @@ impl<'a> Flash<'a> {
         let mut operations = [Operation::Write(&cmd), Operation::Write(&buf)];
         self.spim.transaction(&mut operations).await.unwrap();
 
-        loop {
-            let reg = self.read_status_reg().await;
-            if reg.wip() {
-                defmt::println!("still wip");
-                continue;
-            }
-            break;
-        }
+        self.wait_idle().await;
     }
 }
 
 impl<'a> Drop for Flash<'a> {
     fn drop(&mut self) {
-        //TODO: enter sleep mode
+        // Not super nice to block here, but we don't have another option. it also does not make
+        // sense to implement a separate blocking procedure here. We don't even expect this to take
+        // very long.
+        embassy_futures::block_on(self.enter_deep_sleep());
     }
 }
