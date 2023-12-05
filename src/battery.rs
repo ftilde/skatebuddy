@@ -1,3 +1,5 @@
+use core::sync::atomic::{AtomicU32, Ordering};
+
 use crate::hardware::bat as hw;
 use embassy_nrf::{
     gpio::{Input, Pull},
@@ -60,12 +62,7 @@ impl Battery {
         channel_config.gain = saadc::Gain::GAIN1_4;
         channel_config.time = saadc::Time::_3US;
 
-        let mut saadc = saadc::Saadc::new(
-            &mut self.saadc,
-            crate::Irqs, /*TODO: not sure if this is correct */
-            config,
-            [channel_config],
-        );
+        let mut saadc = saadc::Saadc::new(&mut self.saadc, crate::Irqs, config, [channel_config]);
 
         let mut bat_buf = [0; 1];
         saadc.sample(&mut bat_buf).await;
@@ -144,21 +141,48 @@ impl Reading {
     }
 }
 
-static LAST_ASYNC_READING: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
+static LAST_ASYNC_READING: AtomicU32 = AtomicU32::new(0);
+static LAST_ASYNC_CURRENT: AtomicU32 = AtomicU32::new(0);
+static LAST_ASYNC_CURRENT_STD: AtomicU32 = AtomicU32::new(0);
+
+static ASYNC_BATTERY_SIG: embassy_sync::signal::Signal<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    BatteryCommand,
+> = embassy_sync::signal::Signal::new();
+
+enum BatteryCommand {
+    Reset,
+}
+
+const ASYNC_BATTERY_PERIOD: Duration = Duration::from_secs(20 * 60);
 
 #[embassy_executor::task]
 async fn accurate_battery_task(mut battery: Battery) {
-    let wait_time = Duration::from_secs(20 * 60);
-
-    let reading = battery.read_accurate().await;
-    LAST_ASYNC_READING.store(reading.raw, core::sync::atomic::Ordering::Relaxed);
-
-    let mut ticker = embassy_time::Ticker::every(wait_time);
     loop {
-        ticker.next().await;
-
+        LAST_ASYNC_CURRENT.store(0, Ordering::Relaxed);
+        LAST_ASYNC_CURRENT_STD.store(u32::MAX, Ordering::Relaxed);
         let reading = battery.read_accurate().await;
-        LAST_ASYNC_READING.store(reading.raw, core::sync::atomic::Ordering::Relaxed);
+        LAST_ASYNC_READING.store(reading.raw, Ordering::Relaxed);
+
+        let current_estimator = CurrentEstimator::init(reading);
+
+        let mut ticker = embassy_time::Ticker::every(ASYNC_BATTERY_PERIOD);
+        loop {
+            if let embassy_futures::select::Either::Second(cmd) =
+                embassy_futures::select::select(ticker.next(), ASYNC_BATTERY_SIG.wait()).await
+            {
+                ASYNC_BATTERY_SIG.reset();
+                let BatteryCommand::Reset = cmd;
+                break;
+            }
+
+            let reading = battery.read_accurate().await;
+            LAST_ASYNC_READING.store(reading.raw, Ordering::Relaxed);
+            let current = current_estimator.next(reading);
+            let std = current_estimator.deviation();
+            LAST_ASYNC_CURRENT.store(current.micro_ampere, Ordering::Relaxed);
+            LAST_ASYNC_CURRENT_STD.store(std.micro_ampere, Ordering::Relaxed);
+        }
     }
 }
 
@@ -172,8 +196,25 @@ impl AsyncBattery {
 
     pub async fn read(&mut self) -> Reading {
         Reading {
-            raw: LAST_ASYNC_READING.load(core::sync::atomic::Ordering::Relaxed),
+            raw: LAST_ASYNC_READING.load(Ordering::Relaxed),
         }
+    }
+
+    pub fn current(&mut self) -> CurrentReading {
+        CurrentReading {
+            micro_ampere: LAST_ASYNC_CURRENT.load(Ordering::Relaxed),
+        }
+    }
+
+    pub fn current_std(&mut self) -> CurrentReading {
+        CurrentReading {
+            micro_ampere: LAST_ASYNC_CURRENT_STD.load(Ordering::Relaxed),
+        }
+    }
+
+    pub async fn reset(&self) {
+        ASYNC_BATTERY_SIG.signal(BatteryCommand::Reset);
+        embassy_futures::yield_now().await;
     }
 }
 

@@ -186,7 +186,6 @@ struct Context {
     #[allow(unused)]
     gps: gps::GPSRessources,
     lcd: display::Display,
-    current_reader: battery::CurrentEstimator,
     start_time: Instant,
     spi: embassy_nrf::peripherals::SPI2,
     //dcb: cortex_m::peripheral::DCB,
@@ -214,8 +213,8 @@ async fn display_stuff(ctx: &mut Context) {
     //ctx.backlight.off();
     loop {
         let v = ctx.battery.read().await;
-        let mua = ctx.current_reader.next(v);
-        let mdev = ctx.current_reader.deviation();
+        let mua = ctx.battery.current();
+        let mdev = ctx.battery.current_std();
 
         ctx.lcd.fill(bw_config.off);
         //Circle::new(Point::new(5, i), 40)
@@ -281,8 +280,7 @@ async fn display_stuff(ctx: &mut Context) {
             embassy_futures::select::select(ticker.next(), ctx.button.wait_for_press()).await
         {
             if d > Duration::from_secs(1) {
-                let v = ctx.battery.read().await;
-                ctx.current_reader.reset(v)
+                ctx.battery.reset().await;
             } else {
                 break;
             }
@@ -393,7 +391,6 @@ async fn main(spawner: Spawner) {
     //dump_peripheral_regs();
 
     let mut battery = battery::Battery::new(p.SAADC, p.P0_03);
-    let current_reader = { battery::CurrentEstimator::init(battery.read_accurate().await) };
     let battery = battery::AsyncBattery::new(&spawner, battery);
 
     // Keep hrm in reset to power it off
@@ -461,7 +458,6 @@ async fn main(spawner: Spawner) {
         flash,
         lcd,
         spi: p.SPI2,
-        current_reader,
         start_time: Instant::now(),
         //dcb: core_p.DCB,
     };
