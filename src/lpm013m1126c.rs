@@ -96,7 +96,12 @@ impl Buffer {
     }
 
     pub async fn present<'a, SPI: embedded_hal_async::spi::SpiDevice>(&mut self, spi: &mut SPI) {
-        spi.write(&self.values).await.unwrap();
+        spi.transaction(&mut [
+            embedded_hal_async::spi::Operation::Write(&self.values),
+            embedded_hal_async::spi::Operation::DelayUs(10),
+        ])
+        .await
+        .unwrap();
     }
 }
 
