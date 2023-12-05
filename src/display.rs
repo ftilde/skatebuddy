@@ -14,7 +14,7 @@ enum ExcominCmd {
     Pause,
 }
 
-const DEFAULT_EXCOMIN_FREQ: u64 = 12;
+const DEFAULT_EXCOMIN_FREQ: u64 = 1;
 static EXTCOMIN_SIG: embassy_sync::signal::Signal<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     ExcominCmd,
