@@ -49,7 +49,6 @@ use embassy_time::{Duration, Instant, Ticker, Timer};
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
     SPIM2_SPIS2_SPI2 => spim::InterruptHandler<embassy_nrf::peripherals::SPI2>;
-    SPIM3 => spim::InterruptHandler<embassy_nrf::peripherals::SPI3>;
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
     SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI1>;
     UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<gps::UartInstance>;
@@ -112,8 +111,8 @@ async fn accel_task(
 
     let mut ticker = Ticker::every(Duration::from_secs(1));
     for _ in 0..1 {
-        let reading = accel.reading_nf().await;
-        let reading_hf = accel.reading_hf().await;
+        let _reading = accel.reading_nf().await;
+        let _reading_hf = accel.reading_hf().await;
 
         //defmt::println!(
         //    "Accel: x: {}, y: {}, z: {}, xh: {}, yh: {}, zh: {}",
@@ -189,6 +188,7 @@ struct Context {
     lcd: display::Display,
     current_reader: battery::CurrentEstimator,
     start_time: Instant,
+    spi: embassy_nrf::peripherals::SPI2,
     //dcb: cortex_m::peripheral::DCB,
 }
 
@@ -275,7 +275,7 @@ async fn display_stuff(ctx: &mut Context) {
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
-        ctx.lcd.present().await;
+        ctx.lcd.present(&mut ctx.spi).await;
 
         if let embassy_futures::select::Either::Second(d) =
             embassy_futures::select::select(ticker.next(), ctx.button.wait_for_press()).await
@@ -383,11 +383,12 @@ async fn main(spawner: Spawner) {
     conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
     conf.dcdc.reg1 = true;
 
-    let p = unsafe { nrf52840_hal::pac::Peripherals::steal() };
-    //p.RADIO.power.write(|r| r.power().disabled());
-
     //let core_p = cortex_m::Peripherals::take().unwrap();
-    let p = embassy_nrf::init(conf);
+    let mut p = embassy_nrf::init(conf);
+
+    // DO NOT USE! See
+    // https://infocenter.nordicsemi.com/index.jsp?topic=%2Ferrata_nRF52840_Rev3%2FERR%2FnRF52840%2FRev3%2Flatest%2Fanomaly_840_195.html
+    let _ = p.SPI3;
 
     //dump_peripheral_regs();
 
@@ -414,10 +415,10 @@ async fn main(spawner: Spawner) {
     //let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
     let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
 
-    let flash = flash::FlashRessources::new(p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13).await;
+    let flash = flash::FlashRessources::new(&mut p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13).await;
     {
         //let addr = 0;
-        //let mut f = flash.on().await;
+        //let mut f = flash.on(&mut p.SPI2).await;
 
         //let mut buf = [0xab; 4];
         //f.read(addr, &mut buf).await;
@@ -436,10 +437,7 @@ async fn main(spawner: Spawner) {
 
     let button = button::Button::new(p.P0_17);
 
-    let lcd = display::Display::setup(
-        &spawner, p.SPI3, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
-    )
-    .await;
+    let lcd = display::Display::setup(&spawner, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27).await;
 
     let backlight = display::Backlight::new(p.P0_08);
 
@@ -462,6 +460,7 @@ async fn main(spawner: Spawner) {
         gps,
         flash,
         lcd,
+        spi: p.SPI2,
         current_reader,
         start_time: Instant::now(),
         //dcb: core_p.DCB,

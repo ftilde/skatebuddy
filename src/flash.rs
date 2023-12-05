@@ -9,7 +9,7 @@ use embedded_hal_async::spi::{Operation, SpiDevice};
 
 type SPIInstance = embassy_nrf::peripherals::SPI2;
 
-struct Reg1(u8);
+pub struct Reg1(u8);
 impl Reg1 {
     fn wel(&self) -> bool {
         (self.0 & 0b10) != 0
@@ -27,7 +27,6 @@ enum StatusReg {
 }
 
 pub struct FlashRessources {
-    instance: SPIInstance,
     cs: Output<'static, hw::CS>,
     sck: hw::SCK,
     mosi: hw::MOSI,
@@ -36,7 +35,7 @@ pub struct FlashRessources {
 
 impl FlashRessources {
     pub async fn new(
-        instance: SPIInstance,
+        spi: &mut SPIInstance,
         cs: hw::CS,
         sck: hw::SCK,
         mosi: hw::MOSI,
@@ -45,26 +44,25 @@ impl FlashRessources {
         let cs = Output::new(cs, Level::High, OutputDrive::Standard);
 
         let mut s = Self {
-            instance,
             cs,
             sck,
             mosi,
             miso,
         };
         {
-            let _ = s.on().await;
+            let _ = s.on(spi).await;
             // Drop the handle and thus enter deep sleep
         }
         s
     }
 
-    pub async fn on<'a>(&'a mut self) -> Flash<'a> {
+    pub async fn on<'a>(&'a mut self, spi: &'a mut SPIInstance) -> Flash<'a> {
         let mut config = spim::Config::default();
         config.frequency = spim::Frequency::M8; //TODO: Maybe we can make this faster
         config.mode = spim::MODE_0;
 
         let spim = spim::Spim::new(
-            &mut self.instance,
+            spi,
             crate::Irqs,
             &mut self.sck,
             &mut self.miso,

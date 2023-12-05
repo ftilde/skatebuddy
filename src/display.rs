@@ -1,7 +1,7 @@
 use crate::{hardware::lcd as hw, lpm013m1126c::Buffer};
 use embassy_nrf::{
     gpio::{Level, Output, OutputDrive},
-    peripherals::SPI3,
+    peripherals::SPI2,
     spim,
 };
 use embassy_time::{Duration, Timer};
@@ -57,7 +57,6 @@ pub struct Display {
     buffer: lpm013m1126c::Buffer,
     cs: Output<'static, hw::CS>,
     disp: Output<'static, hw::DISP>,
-    spi: SPI3,
     sck: hw::SCK,
     mosi: hw::MOSI,
 }
@@ -90,7 +89,6 @@ impl Display {
 impl Display {
     pub async fn setup(
         spawner: &embassy_executor::Spawner,
-        spi: SPI3,
         cs: hw::CS,
         extcomin: hw::EXTCOMIN,
         disp: hw::DISP,
@@ -106,7 +104,6 @@ impl Display {
         let mut disp = Display {
             buffer: lpm013m1126c::Buffer::default(),
             cs,
-            spi,
             sck,
             mosi,
             disp,
@@ -118,30 +115,21 @@ impl Display {
         disp
     }
 
-    pub async fn present<'a, 'b: 'a>(&'b mut self) {
-        // TODO: even better: we only need to create they handle for flushing of the data!
+    pub async fn present<'a, 'b: 'a>(&'b mut self, spi: &mut SPI2) {
         let mut config = spim::Config::default();
-        config.frequency = spim::Frequency::M4;
+        config.frequency = spim::Frequency::M2;
         config.mode = lpm013m1126c::SPI_MODE;
-        let spim = spim::Spim::new_txonly(
-            &mut self.spi,
-            crate::Irqs,
-            &mut self.sck,
-            &mut self.mosi,
-            config,
-        );
+        let spim = spim::Spim::new_txonly(spi, crate::Irqs, &mut self.sck, &mut self.mosi, config);
 
-        let mut spi = crate::util::SpiDeviceWrapper {
-            spi: spim,
-            cs: &mut self.cs,
-            on: PinState::High,
-        };
+        {
+            let mut spi = crate::util::SpiDeviceWrapper {
+                spi: spim,
+                cs: &mut self.cs,
+                on: PinState::High,
+            };
 
-        self.buffer.present(&mut spi).await;
-
-        // Workaround? To make sure the transmission finishes ("stop") before dropping spi
-        // handle and thus disabling the spim peripheral
-        Timer::after(Duration::from_millis(1)).await;
+            self.buffer.present(&mut spi).await;
+        }
     }
 }
 
