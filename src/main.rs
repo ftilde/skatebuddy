@@ -198,6 +198,19 @@ async fn idle(ctx: &mut Context) {
     ctx.button.wait_for_press().await;
 }
 
+pub enum DisplayEvent {
+    NewBatData,
+}
+
+static DISPLAY_EVENT: embassy_sync::signal::Signal<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    DisplayEvent,
+> = embassy_sync::signal::Signal::new();
+
+pub fn signal_display_event(event: DisplayEvent) {
+    DISPLAY_EVENT.signal(event);
+}
+
 async fn display_stuff(ctx: &mut Context) {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
@@ -276,13 +289,23 @@ async fn display_stuff(ctx: &mut Context) {
 
         ctx.lcd.present(&mut ctx.spi).await;
 
-        if let embassy_futures::select::Either::Second(d) =
-            embassy_futures::select::select(ticker.next(), ctx.button.wait_for_press()).await
+        match embassy_futures::select::select3(
+            ticker.next(),
+            ctx.button.wait_for_press(),
+            DISPLAY_EVENT.wait(),
+        )
+        .await
         {
-            if d > Duration::from_secs(1) {
-                ctx.battery.reset().await;
-            } else {
-                break;
+            embassy_futures::select::Either3::First(_) => {}
+            embassy_futures::select::Either3::Second(d) => {
+                if d > Duration::from_secs(1) {
+                    ctx.battery.reset().await;
+                } else {
+                    break;
+                }
+            }
+            embassy_futures::select::Either3::Third(_event) => {
+                DISPLAY_EVENT.reset();
             }
         }
     }

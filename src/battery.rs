@@ -163,6 +163,7 @@ async fn accurate_battery_task(mut battery: Battery) {
         LAST_ASYNC_CURRENT_STD.store(u32::MAX, Ordering::Relaxed);
         let reading = battery.read_accurate().await;
         LAST_ASYNC_READING.store(reading.raw, Ordering::Relaxed);
+        crate::signal_display_event(crate::DisplayEvent::NewBatData);
 
         let current_estimator = CurrentEstimator::init(reading);
 
@@ -182,6 +183,7 @@ async fn accurate_battery_task(mut battery: Battery) {
             let std = current_estimator.deviation();
             LAST_ASYNC_CURRENT.store(current.micro_ampere, Ordering::Relaxed);
             LAST_ASYNC_CURRENT_STD.store(std.micro_ampere, Ordering::Relaxed);
+            crate::signal_display_event(crate::DisplayEvent::NewBatData);
         }
     }
 }
