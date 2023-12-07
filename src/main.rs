@@ -184,7 +184,7 @@ struct Context {
     button: button::Button,
     backlight: display::Backlight,
     #[allow(unused)]
-    gps: gps::GPSRessources,
+    //gps: gps::GPSRessources,
     lcd: display::Display,
     start_time: Instant,
     spi: embassy_nrf::peripherals::SPI2,
@@ -477,7 +477,7 @@ async fn main(spawner: Spawner) {
         button,
         bat_state,
         battery,
-        gps,
+        //gps,
         flash,
         lcd,
         spi: p.SPI2,
@@ -492,6 +492,8 @@ async fn main(spawner: Spawner) {
     spawner
         .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
         .unwrap();
+
+    spawner.spawn(time::clock_sync_task(gps)).unwrap();
 
     loop {
         display_stuff(&mut ctx).await;
