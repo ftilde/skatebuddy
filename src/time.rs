@@ -7,11 +7,15 @@ use crate::gps;
 #[embassy_executor::task]
 pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
     loop {
+        let before_sync = Instant::now();
         let res = {
             let mut gps = gps.on();
-            sync_clock(&mut gps, Duration::from_secs(3 * 60)).await
+            sync_clock(&mut gps, Duration::from_secs(15 * 60)).await
         };
         let next_sync = if res.is_ok() {
+            let sync_duration = before_sync.elapsed();
+            LAST_SYNC_DURATION_S.store(sync_duration.as_secs() as _, Ordering::Relaxed);
+            LAST_SYNC_TS_S.store(Instant::now().as_secs() as _, Ordering::Relaxed);
             Duration::from_secs(60 * 60 * 8)
         } else {
             Duration::from_secs(60 * 60 * 1)
@@ -76,8 +80,18 @@ fn set_utc_offset(data: nmea::sentences::ZdaData) -> Result<(), ()> {
 }
 
 static OFFSET_UTC_S: AtomicU32 = AtomicU32::new(0);
-static TZ_SECONDS_EAST: AtomicI32 = AtomicI32::new(2 * 60 * 60); //TODO: actually sync this
+static TZ_SECONDS_EAST: AtomicI32 = AtomicI32::new(1 * 60 * 60); //TODO: actually sync this
 const CONST_UTC_OFFSET_S: u64 = 1u64 << 30;
+
+static LAST_SYNC_TS_S: AtomicU32 = AtomicU32::new(0);
+pub fn time_since_last_sync() -> Duration {
+    let last_sync_ts = Instant::from_secs(LAST_SYNC_TS_S.load(Ordering::Relaxed) as _);
+    last_sync_ts.elapsed()
+}
+static LAST_SYNC_DURATION_S: AtomicU32 = AtomicU32::new(0);
+pub fn last_sync_duration() -> Duration {
+    Duration::from_secs(LAST_SYNC_DURATION_S.load(Ordering::Relaxed) as _)
+}
 
 pub fn now_utc() -> Option<chrono::DateTime<chrono::Utc>> {
     let offset = OFFSET_UTC_S.load(Ordering::Relaxed);

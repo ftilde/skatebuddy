@@ -211,6 +211,17 @@ pub fn signal_display_event(event: DisplayEvent) {
     DISPLAY_EVENT.signal(event);
 }
 
+fn hours_mins_secs(d: Duration) -> (u32, u32, u32) {
+    let seconds = d.as_secs();
+
+    let sec_clock = seconds % 60;
+    let minutes = seconds / 60;
+    let min_clock = minutes % 60;
+    let hours = minutes / 60;
+
+    (hours as _, min_clock as _, sec_clock as _)
+}
+
 async fn display_stuff(ctx: &mut Context) {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
@@ -244,26 +255,22 @@ async fn display_stuff(ctx: &mut Context) {
         render_top_bar(ctx).await;
 
         let now = ctx.start_time.elapsed();
-        let seconds = now.as_secs();
 
-        let sec_clock = seconds % 60;
-        let minutes = seconds / 60;
-        let min_clock = minutes % 60;
-        let hours = minutes / 60;
-
-        let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", hours, min_clock, sec_clock);
-        Text::new(text.as_str(), Point::new(0, 80), style)
-            .draw(&mut ctx.lcd.binary(bw_config))
-            .unwrap();
+        let (h, min, s) = hours_mins_secs(Duration::from_secs(now.as_secs()));
 
         //let c = TOUCH_COUNTER.load(core::sync::atomic::Ordering::SeqCst);
         //let mua = battery.current();
         let text = arrform!(20, "c: {}muA", mua.micro_ampere());
-        Text::new(text.as_str(), Point::new(0, 30), style)
+        Text::new(text.as_str(), Point::new(0, 20), style)
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
         let text = arrform!(20, "s: {}muA", mdev.micro_ampere());
-        Text::new(text.as_str(), Point::new(0, 50), style)
+        Text::new(text.as_str(), Point::new(0, 40), style)
+            .draw(&mut ctx.lcd.binary(bw_config))
+            .unwrap();
+
+        let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", h, min, s);
+        Text::new(text.as_str(), Point::new(0, 70), style)
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
@@ -277,13 +284,19 @@ async fn display_stuff(ctx: &mut Context) {
             },
             v.voltage()
         );
-        Text::new(text.as_str(), Point::new(0, 100), style)
+        Text::new(text.as_str(), Point::new(0, 90), style)
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
-        let ccnt = cortex_m::peripheral::DWT::cycle_count();
-        let text = arrform!(20, "CCNT: {}", ccnt);
-        Text::new(text.as_str(), Point::new(0, 140), style)
+        let (h, min, s) = hours_mins_secs(time::time_since_last_sync());
+        let text = arrform!(36, "G: {}:{:0>2}:{:0>2}", h, min, s);
+        Text::new(text.as_str(), Point::new(0, 125), style)
+            .draw(&mut ctx.lcd.binary(bw_config))
+            .unwrap();
+
+        let (_h, min, s) = hours_mins_secs(time::last_sync_duration());
+        let text = arrform!(16, "T_G: {:0>2}:{:0>2}", min, s);
+        Text::new(text.as_str(), Point::new(0, 145), style)
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
