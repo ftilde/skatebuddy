@@ -6,18 +6,29 @@ use crate::gps;
 
 #[embassy_executor::task]
 pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
+    const INITIAL_SYNC_TIME: Duration = Duration::from_secs(15 * 60);
+    const INCREMENTAL_SYNC_TIME: Duration = Duration::from_secs(2 * 60);
+
+    let mut sync_time = INITIAL_SYNC_TIME;
+
     loop {
         let before_sync = Instant::now();
         let res = {
             let mut gps = gps.on();
-            sync_clock(&mut gps, Duration::from_secs(15 * 60)).await
+            sync_clock(&mut gps, sync_time).await
         };
         let next_sync = if res.is_ok() {
             let sync_duration = before_sync.elapsed();
+
             LAST_SYNC_DURATION_S.store(sync_duration.as_secs() as _, Ordering::Relaxed);
             LAST_SYNC_TS_S.store(Instant::now().as_secs() as _, Ordering::Relaxed);
+
+            sync_time = INCREMENTAL_SYNC_TIME;
+
             Duration::from_secs(60 * 60 * 8)
         } else {
+            NUM_SYNC_FAILS.fetch_add(1, Ordering::Relaxed);
+
             Duration::from_secs(60 * 60 * 1)
         };
         Timer::after(next_sync).await;
@@ -91,6 +102,10 @@ pub fn time_since_last_sync() -> Duration {
 static LAST_SYNC_DURATION_S: AtomicU32 = AtomicU32::new(0);
 pub fn last_sync_duration() -> Duration {
     Duration::from_secs(LAST_SYNC_DURATION_S.load(Ordering::Relaxed) as _)
+}
+static NUM_SYNC_FAILS: AtomicU32 = AtomicU32::new(0);
+pub fn num_sync_fails() -> u32 {
+    NUM_SYNC_FAILS.load(Ordering::Relaxed)
 }
 
 pub fn now_utc() -> Option<chrono::DateTime<chrono::Utc>> {

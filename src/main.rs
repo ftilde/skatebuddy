@@ -274,17 +274,21 @@ async fn display_stuff(ctx: &mut Context) {
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
-        let text = arrform!(
-            20,
-            "{} V: {}",
-            match ctx.bat_state.read() {
-                battery::ChargeState::Full => 'F',
-                battery::ChargeState::Charging => 'C',
-                battery::ChargeState::Draining => 'D',
-            },
-            v.voltage()
-        );
-        Text::new(text.as_str(), Point::new(0, 90), style)
+        //let text = arrform!(
+        //    20,
+        //    "{} V: {}",
+        //    match ctx.bat_state.read() {
+        //        battery::ChargeState::Full => 'F',
+        //        battery::ChargeState::Charging => 'C',
+        //        battery::ChargeState::Draining => 'D',
+        //    },
+        //    v.voltage()
+        //);
+        //Text::new(text.as_str(), Point::new(0, 90), style)
+        //    .draw(&mut ctx.lcd.binary(bw_config))
+        //    .unwrap();
+        let text = arrform!(36, "N_F: {}", time::num_sync_fails());
+        Text::new(text.as_str(), Point::new(0, 105), style)
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
