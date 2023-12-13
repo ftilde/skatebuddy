@@ -17,7 +17,7 @@ pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
     loop {
         let before_sync = Instant::now();
         let res = {
-            let mut gps = gps.on();
+            let mut gps = gps.on().await;
             sync_clock(&mut gps, sync_time).await
         };
         let next_sync = if res.is_ok() {

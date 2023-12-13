@@ -8,6 +8,7 @@ use embassy_nrf::{
 };
 
 use arrform::{arrform, ArrForm};
+use embassy_time::{Duration, Timer};
 
 use crate::hardware::gps as hw;
 
@@ -55,9 +56,7 @@ impl GPSRessources {
         };
 
         {
-            let mut gps = ret.on();
-
-            gps.wait_for_init().await;
+            let mut gps = ret.on().await;
 
             gps.set_active_satellites(SatelliteConfig {
                 gps: true,
@@ -72,12 +71,17 @@ impl GPSRessources {
                 ..Default::default()
             })
             .await;
+
+            // Wait SOME time for the chip to process our requests...
+            Timer::after(Duration::from_millis(100)).await;
         }
 
         ret
     }
-    pub fn on<'a>(&'a mut self) -> GPS<'a> {
-        GPS::new(self)
+    pub async fn on<'a>(&'a mut self) -> GPS<'a> {
+        let mut gps = GPS::new(self);
+        gps.wait_for_init().await;
+        gps
     }
 }
 
