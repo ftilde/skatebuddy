@@ -1,3 +1,5 @@
+use core::ops::ControlFlow;
+
 use embassy_nrf::{
     buffered_uarte::BufferedUarte,
     gpio::{Level, Output, OutputDrive},
@@ -52,19 +54,25 @@ impl GPSRessources {
             w_buf: core::array::from_fn(|_| 0),
         };
 
-        //{
-        //    let mut gps = ret.on();
-        //    let mut buf = [0u8; 128];
-        //    let n_read = gps.read(&mut buf[..]).await;
-        //    //let s = core::str::from_utf8(&buf[..n_read]).unwrap();
-        //    defmt::println!("Init: read {}", n_read);
-        //    gps.set_active_satellites(SatelliteConfig {
-        //        gps: true,
-        //        bds: false,
-        //        glonass: false,
-        //    })
-        //    .await;
-        //}
+        {
+            let mut gps = ret.on();
+
+            gps.wait_for_init().await;
+
+            gps.set_active_satellites(SatelliteConfig {
+                gps: true,
+                bds: false,
+                glonass: false,
+            })
+            .await;
+
+            gps.set_msg_config(NMEAMsgConfig {
+                zda: 1,
+                tim: 1,
+                ..Default::default()
+            })
+            .await;
+        }
 
         ret
     }
@@ -161,6 +169,48 @@ impl<'a> GPS<'a> {
             p(cfg.tim),
         );
         self.nmea_cmd(cmd.as_bytes()).await;
+    }
+
+    pub async fn wait_for_init(&mut self) {
+        let mut txt_count = 0;
+        const NUM_TXT_MSGS_IN_INIT: usize = 4;
+
+        self.with_lines(|line| {
+            if &line[..6] != &*b"$GPTXT" {
+                txt_count += 1;
+            }
+            if txt_count >= NUM_TXT_MSGS_IN_INIT {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        })
+        .await;
+    }
+
+    pub async fn with_lines<R>(&mut self, mut f: impl FnMut(&[u8]) -> ControlFlow<R>) -> R {
+        let mut buf = [0u8; 128];
+        let mut end = 0;
+        loop {
+            let n_read = self.read(&mut buf[end..]).await;
+            if n_read == 1 && buf[end] == 0xff {
+                continue;
+            }
+            let mut read_end = end + n_read;
+            while let Some(newline) = buf[end..read_end].iter().position(|b| *b == b'\n') {
+                let after_newline = end + newline + 1;
+                let line = &buf[..after_newline];
+
+                if let ControlFlow::Break(res) = f(line) {
+                    return res;
+                }
+
+                buf.copy_within(after_newline..read_end, 0);
+                end = 0;
+                read_end = read_end - after_newline;
+            }
+            end = read_end;
+        }
     }
 }
 

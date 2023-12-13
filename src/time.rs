@@ -1,4 +1,7 @@
-use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
+use core::{
+    ops::ControlFlow,
+    sync::atomic::{AtomicI32, AtomicU32, Ordering},
+};
 
 use embassy_time::{Duration, Instant, Timer};
 
@@ -36,60 +39,29 @@ pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
 }
 
 async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()> {
-    let mut buf = [0u8; 128];
-    let mut end = 0;
-    let mut done = false;
     let give_up = Instant::now() + timeout;
-    let mut hit_non_txt = false;
-    while !done {
-        if give_up < Instant::now() {
-            return Err(());
-        }
-        let n_read = gps.read(&mut buf[end..]).await;
-        if n_read == 1 && buf[end] == 0xff {
-            continue;
-        }
-        let mut read_end = end + n_read;
-        while let Some(newline) = buf[end..read_end].iter().position(|b| *b == b'\n') {
-            let after_newline = end + newline + 1;
-            let line = &buf[..after_newline];
-            if &line[..6] != &*b"$GPTXT" && !hit_non_txt {
-                hit_non_txt = true;
-                gps.set_active_satellites(gps::SatelliteConfig {
-                    gps: true,
-                    bds: false,
-                    glonass: false,
-                })
-                .await;
-                defmt::println!("Set satellites!");
-                gps.set_msg_config(gps::NMEAMsgConfig {
-                    zda: 1,
-                    tim: 1,
-                    ..Default::default()
-                })
-                .await;
-                defmt::println!("Set msgs!");
-            }
-            let s = core::str::from_utf8(line).unwrap();
-            defmt::println!("GPS: {}", s);
-            //state.parse(s).unwrap();
-            let nmea = nmea::parse_bytes(line);
-            match nmea {
-                Ok(nmea::ParseResult::ZDA(d)) => {
-                    if set_utc_offset(d).is_ok() {
-                        done = true;
-                    }
-                }
-                _ => {}
-            }
 
-            buf.copy_within(after_newline..read_end, 0);
-            end = 0;
-            read_end = read_end - after_newline;
+    gps.with_lines(|line| {
+        if give_up < Instant::now() {
+            return ControlFlow::Break(Err(()));
         }
-        end = read_end;
-    }
-    Ok(())
+
+        let s = core::str::from_utf8(line).unwrap();
+        defmt::println!("GPS: {}", s);
+        //state.parse(s).unwrap();
+        let nmea = nmea::parse_bytes(line);
+        match nmea {
+            Ok(nmea::ParseResult::ZDA(d)) => {
+                if set_utc_offset(d).is_ok() {
+                    return ControlFlow::Break(Ok(()));
+                }
+            }
+            _ => {}
+        }
+
+        ControlFlow::Continue(())
+    })
+    .await
 }
 
 fn set_utc_offset(data: nmea::sentences::ZdaData) -> Result<(), ()> {
