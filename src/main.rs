@@ -236,7 +236,6 @@ async fn display_stuff(ctx: &mut Context) {
     ctx.lcd.on();
     //ctx.backlight.off();
     loop {
-        let v = ctx.battery.read().await;
         let mua = ctx.battery.current();
         let mdev = ctx.battery.current_std();
 
@@ -430,7 +429,7 @@ async fn main(spawner: Spawner) {
 
     //dump_peripheral_regs();
 
-    let mut battery = battery::Battery::new(p.SAADC, p.P0_03);
+    let battery = battery::Battery::new(p.SAADC, p.P0_03);
     let battery = battery::AsyncBattery::new(&spawner, battery);
 
     // Keep hrm in reset to power it off
@@ -487,7 +486,8 @@ async fn main(spawner: Spawner) {
         p.PPI_CH1,
         p.PPI_CH2,
         p.PPI_GROUP1,
-    );
+    )
+    .await;
 
     let mut ctx = Context {
         backlight,

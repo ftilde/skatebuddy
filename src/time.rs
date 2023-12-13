@@ -40,6 +40,7 @@ async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()>
     let mut end = 0;
     let mut done = false;
     let give_up = Instant::now() + timeout;
+    let mut hit_non_txt = false;
     while !done {
         if give_up < Instant::now() {
             return Err(());
@@ -52,6 +53,23 @@ async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()>
         while let Some(newline) = buf[end..read_end].iter().position(|b| *b == b'\n') {
             let after_newline = end + newline + 1;
             let line = &buf[..after_newline];
+            if &line[..6] != &*b"$GPTXT" && !hit_non_txt {
+                hit_non_txt = true;
+                gps.set_active_satellites(gps::SatelliteConfig {
+                    gps: true,
+                    bds: false,
+                    glonass: false,
+                })
+                .await;
+                defmt::println!("Set satellites!");
+                gps.set_msg_config(gps::NMEAMsgConfig {
+                    zda: 1,
+                    tim: 1,
+                    ..Default::default()
+                })
+                .await;
+                defmt::println!("Set msgs!");
+            }
             let s = core::str::from_utf8(line).unwrap();
             defmt::println!("GPS: {}", s);
             //state.parse(s).unwrap();
