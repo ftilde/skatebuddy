@@ -41,22 +41,33 @@ pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
 async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()> {
     let give_up = Instant::now() + timeout;
 
-    gps.with_lines(|line| {
+    gps.with_messages(|msg| {
         if give_up < Instant::now() {
             return ControlFlow::Break(Err(()));
         }
-
-        let s = core::str::from_utf8(line).unwrap();
-        defmt::println!("GPS: {}", s);
-        //state.parse(s).unwrap();
-        let nmea = nmea::parse_bytes(line);
-        match nmea {
-            Ok(nmea::ParseResult::ZDA(d)) => {
-                if set_utc_offset(d).is_ok() {
-                    return ControlFlow::Break(Ok(()));
+        match msg {
+            gps::Message::Casic(c) => {
+                defmt::println!(
+                    "GPS CASIC: {}, {}, {:?}",
+                    c.id.class,
+                    c.id.number,
+                    c.payload
+                );
+            }
+            gps::Message::Nmea(line) => {
+                let s = core::str::from_utf8(line).unwrap();
+                defmt::println!("GPS: {}", s);
+                //state.parse(s).unwrap();
+                let nmea = nmea::parse_bytes(line);
+                match nmea {
+                    Ok(nmea::ParseResult::ZDA(d)) => {
+                        if set_utc_offset(d).is_ok() {
+                            return ControlFlow::Break(Ok(()));
+                        }
+                    }
+                    _ => {}
                 }
             }
-            _ => {}
         }
 
         ControlFlow::Continue(())

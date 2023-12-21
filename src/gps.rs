@@ -7,6 +7,8 @@ use embassy_nrf::{
     uarte::Config,
 };
 
+use embedded_io_async::Read;
+
 use arrform::{arrform, ArrForm};
 use embassy_time::{Duration, Instant, Timer};
 
@@ -27,8 +29,9 @@ pub struct GPSRessources {
     ppi_ch1: Channel1Instance,
     ppi_ch2: Channel2Instance,
     ppi_group: PPIGroupInstance,
-    r_buf: [u8; 1024],
+    r_buf: [u8; 256],
     w_buf: [u8; 128],
+    line_buf: AsyncBufReader,
 }
 
 impl GPSRessources {
@@ -53,6 +56,7 @@ impl GPSRessources {
             ppi_group,
             r_buf: core::array::from_fn(|_| 0),
             w_buf: core::array::from_fn(|_| 0),
+            line_buf: AsyncBufReader::new(),
         };
 
         {
@@ -116,6 +120,7 @@ impl GPSRessources {
 pub struct GPS<'a> {
     power: &'a mut Output<'static, P0_29>,
     uart: BufferedUarte<'a, UartInstance, TimerInstance>,
+    line_buf: &'a mut AsyncBufReader,
 }
 
 impl<'a> GPS<'a> {
@@ -140,11 +145,8 @@ impl<'a> GPS<'a> {
         GPS {
             power: &mut ressources.power,
             uart,
+            line_buf: &mut ressources.line_buf,
         }
-    }
-
-    pub async fn read(&mut self, buf: &mut [u8]) -> usize {
-        self.uart.read(buf).await.unwrap()
     }
 
     pub async fn casic_msg(&mut self, msg_id: CASICMessageIdentifier, payload: &[u8]) {
@@ -231,42 +233,21 @@ impl<'a> GPS<'a> {
         let mut txt_count = 0;
         const NUM_TXT_MSGS_IN_INIT: usize = 4;
 
-        self.with_lines(|line| {
-            if &line[..6] != &*b"$GPTXT" {
-                txt_count += 1;
-            }
-            if txt_count >= NUM_TXT_MSGS_IN_INIT {
-                ControlFlow::Break(())
+        self.with_messages(|m| {
+            if let Message::Nmea(line) = m {
+                if &line[..6] != &*b"$GPTXT" {
+                    txt_count += 1;
+                }
+                if txt_count >= NUM_TXT_MSGS_IN_INIT {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
             } else {
                 ControlFlow::Continue(())
             }
         })
         .await;
-    }
-
-    pub async fn with_lines<R>(&mut self, mut f: impl FnMut(&[u8]) -> ControlFlow<R>) -> R {
-        let mut buf = [0u8; 128];
-        let mut end = 0;
-        loop {
-            let n_read = self.read(&mut buf[end..]).await;
-            if n_read == 1 && buf[end] == 0xff {
-                continue;
-            }
-            let mut read_end = end + n_read;
-            while let Some(newline) = buf[end..read_end].iter().position(|b| *b == b'\n') {
-                let after_newline = end + newline + 1;
-                let line = &buf[..after_newline];
-
-                if let ControlFlow::Break(res) = f(line) {
-                    return res;
-                }
-
-                buf.copy_within(after_newline..read_end, 0);
-                end = 0;
-                read_end = read_end - after_newline;
-            }
-            end = read_end;
-        }
     }
 
     pub async fn with_messages<R>(&mut self, mut f: impl FnMut(Message) -> ControlFlow<R>) -> R {
@@ -276,15 +257,14 @@ impl<'a> GPS<'a> {
             Free,
         }
         let mut state = State::Free;
-        let mut old_len = 0;
         loop {
-            let current_buf = self.uart.fill_buf().await.unwrap();
-            let new_len = current_buf.len();
-            if old_len == new_len {
+            let n_new = self.line_buf.fill(&mut self.uart).await;
+            let current_buf = self.line_buf.buf();
+            if n_new == 0 {
+                defmt::println!("wait bc unchanged len");
                 Timer::after(Duration::from_millis(1)).await;
                 continue;
             }
-            old_len = new_len;
 
             match state {
                 State::Casic => {
@@ -305,7 +285,7 @@ impl<'a> GPS<'a> {
                                 payload: payload_buf,
                             }));
 
-                            self.uart.consume(packet_len);
+                            self.line_buf.consume(packet_len);
 
                             if let ControlFlow::Break(res) = res {
                                 return res;
@@ -321,7 +301,7 @@ impl<'a> GPS<'a> {
                         let line = &current_buf[..after_newline];
                         let res = f(Message::Nmea(line));
 
-                        self.uart.consume(after_newline);
+                        self.line_buf.consume(after_newline);
 
                         if let ControlFlow::Break(res) = res {
                             return res;
@@ -347,15 +327,47 @@ impl<'a> GPS<'a> {
                                 break;
                             }
                             _ => {
-                                to_consume = i;
+                                to_consume = i + 1;
                             }
                         };
                     }
 
-                    self.uart.consume(to_consume);
+                    //if to_consume > 0 {
+                    //    defmt::println!("trashing {}", &current_buf[..to_consume]);
+                    //}
+                    self.line_buf.consume(to_consume);
                 }
             }
         }
+    }
+}
+
+struct AsyncBufReader {
+    inner: [u8; 1024],
+    end: usize,
+}
+
+impl AsyncBufReader {
+    fn new() -> Self {
+        Self {
+            inner: core::array::from_fn(|_| 0),
+            end: 0,
+        }
+    }
+
+    async fn fill<B: Read>(&mut self, r: &mut B) -> usize {
+        let n_new = r.read(&mut self.inner[self.end..]).await.unwrap();
+        self.end += n_new;
+        n_new
+    }
+
+    fn buf(&self) -> &[u8] {
+        &self.inner[..self.end]
+    }
+
+    fn consume(&mut self, n: usize) {
+        self.inner.copy_within(n..self.end, 0);
+        self.end -= n;
     }
 }
 
@@ -400,18 +412,18 @@ const CASIC_MAGIC_HEADER: [u8; 2] = [CASIC_MAGIC_HEADER_0, CASIC_MAGIC_HEADER_1]
 #[repr(C, packed)]
 #[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct CASICPacketHeader {
-    len: u16,
-    msg_id: CASICMessageIdentifier,
+    pub len: u16,
+    pub msg_id: CASICMessageIdentifier,
 }
 
 #[repr(C, packed)]
 #[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct CASICMessageIdentifier {
-    class: u8,
-    number: u8,
+    pub class: u8,
+    pub number: u8,
 }
 
 pub struct RawCasicMsg<'a> {
-    id: CASICMessageIdentifier,
-    payload: &'a [u8],
+    pub id: CASICMessageIdentifier,
+    pub payload: &'a [u8],
 }
