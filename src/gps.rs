@@ -8,7 +8,7 @@ use embassy_nrf::{
 };
 
 use arrform::{arrform, ArrForm};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 
 use crate::hardware::gps as hw;
 
@@ -27,7 +27,7 @@ pub struct GPSRessources {
     ppi_ch1: Channel1Instance,
     ppi_ch2: Channel2Instance,
     ppi_group: PPIGroupInstance,
-    r_buf: [u8; 128],
+    r_buf: [u8; 1024],
     w_buf: [u8; 128],
 }
 
@@ -57,6 +57,34 @@ impl GPSRessources {
 
         {
             let mut gps = ret.on().await;
+
+            gps.casic_msg(
+                CASICMessageIdentifier {
+                    class: 0x06,
+                    number: 0x01,
+                },
+                &[],
+            )
+            .await;
+
+            let mut t = Instant::now();
+            gps.with_messages(|m| {
+                match m {
+                    Message::Casic(c) => {
+                        defmt::println!("CASIC: {}, {}, {:?}", c.id.class, c.id.number, c.payload);
+                    }
+                    Message::Nmea(c) => {
+                        defmt::println!("NMEA: {:?}", c);
+                    }
+                }
+                if t.elapsed() > Duration::from_millis(100) {
+                    t = Instant::now();
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+            .await;
 
             gps.set_active_satellites(SatelliteConfig {
                 gps: true,
@@ -117,6 +145,30 @@ impl<'a> GPS<'a> {
 
     pub async fn read(&mut self, buf: &mut [u8]) -> usize {
         self.uart.read(buf).await.unwrap()
+    }
+
+    pub async fn casic_msg(&mut self, msg_id: CASICMessageIdentifier, payload: &[u8]) {
+        let len = payload.len() as u32;
+        assert!(len < 2000);
+        assert!(len % 4 == 0);
+        let header = CASICPacketHeader {
+            msg_id,
+            len: len as u16,
+        };
+
+        let mut checksum = ((msg_id.number as u32) << 24) + ((msg_id.class as u32) << 16) + len;
+
+        for bytes in payload.chunks_exact(4) {
+            let bytes: &[u8; 4] = bytes.try_into().unwrap();
+            let val = u32::from_le_bytes(*bytes);
+            checksum = checksum.wrapping_add(val);
+        }
+
+        self.uart.write(&CASIC_MAGIC_HEADER).await.unwrap();
+        self.uart.write(bytemuck::bytes_of(&header)).await.unwrap();
+        self.uart.write(payload).await.unwrap();
+        self.uart.write(&checksum.to_le_bytes()).await.unwrap();
+        self.uart.flush().await.unwrap();
     }
 
     pub async fn nmea_cmd(&mut self, cmd: &[u8]) {
@@ -216,6 +268,100 @@ impl<'a> GPS<'a> {
             end = read_end;
         }
     }
+
+    pub async fn with_messages<R>(&mut self, mut f: impl FnMut(Message) -> ControlFlow<R>) -> R {
+        enum State {
+            Casic,
+            Nmea,
+            Free,
+        }
+        let mut state = State::Free;
+        let mut old_len = 0;
+        loop {
+            let current_buf = self.uart.fill_buf().await.unwrap();
+            let new_len = current_buf.len();
+            if old_len == new_len {
+                Timer::after(Duration::from_millis(1)).await;
+                continue;
+            }
+            old_len = new_len;
+
+            match state {
+                State::Casic => {
+                    let header_len = core::mem::size_of::<CASICPacketHeader>();
+                    if current_buf.len() >= header_len {
+                        let header: &CASICPacketHeader =
+                            bytemuck::from_bytes(&current_buf[..header_len]);
+
+                        let magic_len = 4;
+                        let payload_len = header.len as usize;
+                        let packet_len = header_len + payload_len + magic_len;
+                        if current_buf.len() >= packet_len {
+                            //TODO: we could also check the checksum... meh...
+
+                            let payload_buf = &current_buf[header_len..][..payload_len];
+                            let res = f(Message::Casic(RawCasicMsg {
+                                id: header.msg_id,
+                                payload: payload_buf,
+                            }));
+
+                            self.uart.consume(packet_len);
+
+                            if let ControlFlow::Break(res) = res {
+                                return res;
+                            }
+
+                            state = State::Free;
+                        }
+                    }
+                }
+                State::Nmea => {
+                    if let Some(newline_pos) = current_buf.iter().position(|b| *b == b'\n') {
+                        let after_newline = newline_pos + 1;
+                        let line = &current_buf[..after_newline];
+                        let res = f(Message::Nmea(line));
+
+                        self.uart.consume(after_newline);
+
+                        if let ControlFlow::Break(res) = res {
+                            return res;
+                        }
+
+                        state = State::Free;
+                    }
+                }
+
+                State::Free => {
+                    let mut to_consume = 0;
+                    for (i, w) in current_buf.windows(2).enumerate() {
+                        let w: [u8; 2] = w.try_into().unwrap();
+                        match w {
+                            [b'$', _] => {
+                                state = State::Nmea;
+                                to_consume = i;
+                                break;
+                            }
+                            CASIC_MAGIC_HEADER => {
+                                state = State::Casic;
+                                to_consume = i + CASIC_MAGIC_HEADER.len();
+                                break;
+                            }
+                            _ => {
+                                to_consume = i;
+                            }
+                        };
+                    }
+
+                    self.uart.consume(to_consume);
+                }
+            }
+        }
+    }
+}
+
+pub enum Message<'a> {
+    Casic(RawCasicMsg<'a>),
+    Nmea(&'a [u8]),
 }
 
 pub struct SatelliteConfig {
@@ -245,4 +391,27 @@ impl<'a> Drop for GPS<'a> {
     fn drop(&mut self) {
         self.power.set_low();
     }
+}
+
+const CASIC_MAGIC_HEADER_0: u8 = 0xba;
+const CASIC_MAGIC_HEADER_1: u8 = 0xce;
+const CASIC_MAGIC_HEADER: [u8; 2] = [CASIC_MAGIC_HEADER_0, CASIC_MAGIC_HEADER_1];
+
+#[repr(C, packed)]
+#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct CASICPacketHeader {
+    len: u16,
+    msg_id: CASICMessageIdentifier,
+}
+
+#[repr(C, packed)]
+#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct CASICMessageIdentifier {
+    class: u8,
+    number: u8,
+}
+
+pub struct RawCasicMsg<'a> {
+    id: CASICMessageIdentifier,
+    payload: &'a [u8],
 }
