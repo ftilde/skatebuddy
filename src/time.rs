@@ -57,9 +57,9 @@ async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()>
                     defmt::println!("GPS CASIC: {:?}, {:?}", c.id, c.payload);
                 }
             },
-            gps::Message::Nmea(line) => {
-                let s = core::str::from_utf8(line).unwrap();
-                defmt::println!("GPS: {}", s);
+            gps::Message::Nmea(s) => {
+                let s = core::str::from_utf8(s).unwrap();
+                defmt::println!("NMEA: {}", s);
             }
         }
 

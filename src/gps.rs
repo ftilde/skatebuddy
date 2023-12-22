@@ -10,7 +10,7 @@ use embassy_nrf::{
 use embedded_io_async::Read;
 
 use arrform::{arrform, ArrForm};
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Timer};
 
 use crate::hardware::gps as hw;
 
@@ -29,7 +29,7 @@ pub struct GPSRessources {
     ppi_ch1: Channel1Instance,
     ppi_ch2: Channel2Instance,
     ppi_group: PPIGroupInstance,
-    r_buf: [u8; 512],
+    r_buf: [u8; 256],
     w_buf: [u8; 128],
     line_buf: AsyncBufReader,
 }
@@ -62,29 +62,16 @@ impl GPSRessources {
         {
             let mut gps = ret.on().await;
 
+            // ... and only enable the casic msgs that we need
             gps.set_msg_freq(NAV_TIME_UTC, 1).await;
 
-            gps.casic_msg(CFG_MSG, &[]).await;
-
-            let mut t = Instant::now();
-            gps.with_messages(|m| {
-                match m {
-                    Message::Casic(c) => {
-                        defmt::println!("CASIC: {:?}, {:?}", c.id, c.payload);
-                    }
-                    Message::Nmea(c) => {
-                        defmt::println!("NMEA: {:?}", c);
-                    }
-                }
-                if t.elapsed() > Duration::from_millis(100) {
-                    t = Instant::now();
-                    ControlFlow::Break(())
-                } else {
-                    ControlFlow::Continue(())
-                }
+            // Disable all nmea messages
+            gps.set_nmea_msg_config(NMEAMsgConfig {
+                ..Default::default()
             })
             .await;
 
+            // Only using gps gets us a quicker fix
             gps.set_active_satellites(SatelliteConfig {
                 gps: true,
                 bds: false,
@@ -92,12 +79,26 @@ impl GPSRessources {
             })
             .await;
 
-            gps.set_msg_config(NMEAMsgConfig {
-                zda: 1,
-                tim: 1,
-                ..Default::default()
-            })
-            .await;
+            // Debug: Print all messages that are enabled
+            //gps.casic_msg(CFG_MSG, &[]).await;
+            //let mut t = Instant::now();
+            //gps.with_messages(|m| {
+            //    match m {
+            //        Message::Casic(c) => {
+            //            defmt::println!("CASIC: {:?}, {:?}", c.id, c.payload);
+            //        }
+            //        Message::Nmea(c) => {
+            //            defmt::println!("NMEA: {:?}", c);
+            //        }
+            //    }
+            //    if t.elapsed() > Duration::from_millis(100) {
+            //        t = Instant::now();
+            //        ControlFlow::Break(())
+            //    } else {
+            //        ControlFlow::Continue(())
+            //    }
+            //})
+            //.await;
 
             // Wait SOME time for the chip to process our requests...
             Timer::after(Duration::from_millis(100)).await;
@@ -106,6 +107,9 @@ impl GPSRessources {
         ret
     }
     pub async fn on<'a>(&'a mut self) -> GPS<'a> {
+        // Drop any leftover data from previous run
+        self.line_buf.clear();
+
         let mut gps = GPS::new(self);
         gps.wait_for_init().await;
         gps
@@ -212,7 +216,7 @@ impl<'a> GPS<'a> {
         self.casic_msg(CFG_MSG, bytemuck::bytes_of(&payload)).await
     }
 
-    pub async fn set_msg_config(&mut self, cfg: NMEAMsgConfig) {
+    pub async fn set_nmea_msg_config(&mut self, cfg: NMEAMsgConfig) {
         fn p(i: u8) -> u8 {
             i.min(9)
         }
@@ -238,22 +242,40 @@ impl<'a> GPS<'a> {
     }
 
     pub async fn wait_for_init(&mut self) {
-        let mut txt_count = 0;
-        const NUM_TXT_MSGS_IN_INIT: usize = 4;
-
-        self.with_messages(|m| {
-            if let Message::Nmea(line) = m {
-                if &line[..6] != &*b"$GPTXT" {
-                    txt_count += 1;
-                }
-                if txt_count >= NUM_TXT_MSGS_IN_INIT {
-                    ControlFlow::Break(())
-                } else {
-                    ControlFlow::Continue(())
-                }
-            } else {
-                ControlFlow::Continue(())
+        // First throw away everything until (and including) the first 0xff which signals the start
+        // of the transmission
+        loop {
+            let n_new = self.line_buf.fill(&mut self.uart).await;
+            let current_buf = self.line_buf.buf();
+            if n_new == 0 {
+                defmt::println!("wait bc unchanged len");
+                Timer::after(Duration::from_millis(1)).await;
+                continue;
             }
+
+            if let Some(pos) = current_buf.iter().position(|b| *b == 0xff) {
+                self.line_buf.consume(pos + 1);
+                break;
+            } else {
+                self.line_buf.consume(current_buf.len());
+            }
+        }
+
+        // Then wait and drop the first 5 GPTXT messages which include chip information
+        let mut n = 0;
+        self.with_messages(|m| {
+            match m {
+                Message::Casic(_c) => {}
+                Message::Nmea(c) => {
+                    if &c[..6] == b"$GPTXT" {
+                        n += 1;
+                        if n == 5 {
+                            return ControlFlow::Break(());
+                        }
+                    }
+                }
+            }
+            ControlFlow::Continue(())
         })
         .await;
     }
@@ -273,6 +295,7 @@ impl<'a> GPS<'a> {
                 Timer::after(Duration::from_millis(1)).await;
                 continue;
             }
+            //defmt::println!("buffer is now: {:?}", current_buf);
 
             match state {
                 State::Casic => {
@@ -377,8 +400,13 @@ impl AsyncBufReader {
         self.inner.copy_within(n..self.end, 0);
         self.end -= n;
     }
+
+    fn clear(&mut self) {
+        self.consume(self.end);
+    }
 }
 
+#[derive(defmt::Format)]
 pub enum Message<'a> {
     Casic(RawCasicMsg<'a>),
     Nmea(&'a [u8]),
@@ -429,7 +457,7 @@ pub struct CASICPacketHeader {
 pub type CASICMessageIdentifier = [u8; 2];
 // { class: u8, number: u8 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, defmt::Format)]
 pub struct RawCasicMsg<'a> {
     pub id: CASICMessageIdentifier,
     pub payload: &'a [u8],
