@@ -35,6 +35,7 @@ mod flash;
 mod gps;
 mod hardware;
 mod lpm013m1126c;
+mod mag;
 mod time;
 mod util;
 
@@ -42,6 +43,7 @@ use embassy_executor::Spawner;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Input, Level, Output, OutputDrive, Pull},
+    peripherals::TWISPI1,
     saadc, spim, twim,
 };
 use embassy_time::{Duration, Instant, Ticker, Timer};
@@ -188,6 +190,8 @@ struct Context {
     lcd: display::Display,
     start_time: Instant,
     spi: embassy_nrf::peripherals::SPI2,
+    mag: mag::MagRessources,
+    twi1: TWISPI1,
     //dcb: cortex_m::peripheral::DCB,
 }
 
@@ -327,38 +331,6 @@ async fn display_stuff(ctx: &mut Context) {
     }
 }
 
-async fn get_mag_reading(
-    twim: embassy_nrf::peripherals::TWISPI1,
-    scl: hardware::mag::SCL,
-    sda: hardware::mag::SDA,
-) {
-    // Mag
-    //let mag_sda = Input::new(p.P1_12, Pull::None);
-    //let mag_scl = Input::new(p.P1_13, Pull::None);
-    let mut config = twim::Config::default();
-    config.frequency = embassy_nrf::twim::Frequency::K400;
-    let mut mag_i2c = twim::Twim::new(twim, Irqs, sda, scl, config);
-
-    // Start measurement
-    let cmd = [0x3e];
-    let mut res = [0];
-    mag_i2c
-        .write_read(hardware::mag::ADDR, &cmd, &mut res)
-        .await
-        .unwrap();
-    //defmt::println!("Status after start: {:b}", res[0]);
-    Timer::after(Duration::from_millis(100)).await;
-
-    let cmd = [0x4e];
-    let mut res = [0; 7];
-    mag_i2c
-        .write_read(hardware::mag::ADDR, &cmd, &mut res)
-        .await
-        .unwrap();
-    //defmt::println!("Status after read: {:b}", res[0]);
-    //defmt::println!("Data: {:x}", res[1..]);
-}
-
 fn dump_peripheral_regs() {
     let foo = unsafe { nrf52840_hal::pac::Peripherals::steal() };
     defmt::println!("mrs: {:b}", foo.POWER.mainregstatus.read().bits());
@@ -440,10 +412,6 @@ async fn main(spawner: Spawner) {
     let _unused = Input::new(p.P0_24, Pull::None);
     let _unused = Input::new(p.P1_00, Pull::None);
 
-    // Mag
-    let _unused = Input::new(p.P1_12, Pull::None);
-    let _unused = Input::new(p.P1_13, Pull::None);
-
     // pressure
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
@@ -489,6 +457,8 @@ async fn main(spawner: Spawner) {
     )
     .await;
 
+    let mag = mag::MagRessources::new(p.P1_12, p.P1_13);
+
     let mut ctx = Context {
         backlight,
         button,
@@ -499,16 +469,23 @@ async fn main(spawner: Spawner) {
         lcd,
         spi: p.SPI2,
         start_time: Instant::now(),
-        //dcb: core_p.DCB,
+        mag,
+        twi1: p.TWISPI1,
     };
 
     spawner
         .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
         .unwrap();
 
-    spawner
-        .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
-        .unwrap();
+    {
+        let mut mag = ctx.mag.on(&mut ctx.twi1).await;
+        let r = mag.read().await;
+        defmt::println!("mag: {:?}", r);
+    }
+
+    //spawner
+    //    .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
+    //    .unwrap();
 
     spawner.spawn(time::clock_sync_task(gps)).unwrap();
 
