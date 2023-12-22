@@ -945,6 +945,7 @@ dependencies = [
  "embedded-io-async",
  "nrf52840-hal",
  "panic-probe",
+ "util",
 ]
 
 [[package]]
@@ -1042,6 +1043,13 @@ name = "usb-device"
 version = "0.2.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f6cc3adc849b5292b4075fc0d5fdcf2f24866e88e336dd27a8943090a520508"
+
+[[package]]
+name = "util"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+]
 
 [[package]]
 name = "vcell"

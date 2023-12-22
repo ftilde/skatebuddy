@@ -69,28 +69,42 @@ async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()>
 }
 
 fn set_utc_offset(data: gps::NavTimeUTC) -> Result<(), ()> {
-    if data.valid != 0 && data.date_valid != 0 {
-        let time =
-            chrono::NaiveTime::from_hms_opt(data.hour.into(), data.min.into(), data.sec.into())
-                .unwrap();
+    if data.valid == 0 {
+        return Err(());
+    }
 
+    let time = chrono::NaiveTime::from_hms_opt(data.hour.into(), data.min.into(), data.sec.into())
+        .unwrap();
+
+    if data.date_valid != 0 {
         let date =
             chrono::NaiveDate::from_ymd_opt(data.year.into(), data.month.into(), data.day.into())
                 .unwrap();
 
         let datetime = date.and_time(time).and_utc();
 
-        let unix_seconds = datetime.timestamp() as u64;
+        set_utc_offset_from_dt(datetime);
 
-        let boot_time = Instant::now();
-        let boot_seconds = boot_time.as_secs();
-
-        let offset = unix_seconds - CONST_UTC_OFFSET_S - boot_seconds;
-        OFFSET_UTC_S.store(offset.try_into().unwrap(), Ordering::Relaxed);
         Ok(())
+    } else if let Some(current_dt) = now_utc() {
+        if let Ok(n) = util::resync_time(current_dt, time) {
+            set_utc_offset_from_dt(n);
+            Ok(())
+        } else {
+            Err(())
+        }
     } else {
         Err(())
     }
+}
+fn set_utc_offset_from_dt(datetime: chrono::DateTime<chrono::Utc>) {
+    let unix_seconds = datetime.timestamp() as u64;
+
+    let boot_time = Instant::now();
+    let boot_seconds = boot_time.as_secs();
+
+    let offset = unix_seconds - CONST_UTC_OFFSET_S - boot_seconds;
+    OFFSET_UTC_S.store(offset.try_into().unwrap(), Ordering::Relaxed);
 }
 
 static OFFSET_UTC_S: AtomicU32 = AtomicU32::new(0);
