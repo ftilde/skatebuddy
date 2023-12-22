@@ -46,27 +46,20 @@ async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()>
             return ControlFlow::Break(Err(()));
         }
         match msg {
-            gps::Message::Casic(c) => {
-                defmt::println!(
-                    "GPS CASIC: {}, {}, {:?}",
-                    c.id.class,
-                    c.id.number,
-                    c.payload
-                );
-            }
+            gps::Message::Casic(c) => match c.parse() {
+                gps::CasicMsg::NavTimeUTC(c) => {
+                    defmt::println!("GPS nav: {:?}", c);
+                    if set_utc_offset(c).is_ok() {
+                        return ControlFlow::Break(Ok(()));
+                    }
+                }
+                gps::CasicMsg::Unknown(c) => {
+                    defmt::println!("GPS CASIC: {:?}, {:?}", c.id, c.payload);
+                }
+            },
             gps::Message::Nmea(line) => {
                 let s = core::str::from_utf8(line).unwrap();
                 defmt::println!("GPS: {}", s);
-                //state.parse(s).unwrap();
-                let nmea = nmea::parse_bytes(line);
-                match nmea {
-                    Ok(nmea::ParseResult::ZDA(d)) => {
-                        if set_utc_offset(d).is_ok() {
-                            return ControlFlow::Break(Ok(()));
-                        }
-                    }
-                    _ => {}
-                }
             }
         }
 
@@ -75,10 +68,19 @@ async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()>
     .await
 }
 
-fn set_utc_offset(data: nmea::sentences::ZdaData) -> Result<(), ()> {
-    if let Some(d) = data.utc_date_time() {
-        //let d = chrono::DateTime::from_naive_utc_and_offset(d, chrono::Utc);
-        let unix_seconds = d.timestamp() as u64;
+fn set_utc_offset(data: gps::NavTimeUTC) -> Result<(), ()> {
+    if data.valid != 0 && data.date_valid != 0 {
+        let time =
+            chrono::NaiveTime::from_hms_opt(data.hour.into(), data.min.into(), data.sec.into())
+                .unwrap();
+
+        let date =
+            chrono::NaiveDate::from_ymd_opt(data.year.into(), data.month.into(), data.day.into())
+                .unwrap();
+
+        let datetime = date.and_time(time).and_utc();
+
+        let unix_seconds = datetime.timestamp() as u64;
 
         let boot_time = Instant::now();
         let boot_seconds = boot_time.as_secs();
