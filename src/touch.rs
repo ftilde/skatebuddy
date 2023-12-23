@@ -44,10 +44,11 @@ impl TouchRessources {
     }
 
     pub async fn enabled<'a>(&'a mut self, i2c: &'a mut I2CInstance) -> Touch<'a> {
+        // These reset durations are the same that espruino uses, so hopefully this works out.
         self.reset.set_low();
-        Timer::after(Duration::from_millis(20)).await;
+        Timer::after(Duration::from_millis(1)).await;
         self.reset.set_high();
-        Timer::after(Duration::from_millis(200)).await;
+        Timer::after(Duration::from_millis(1)).await;
 
         Touch {
             hw: self,
