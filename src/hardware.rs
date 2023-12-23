@@ -22,6 +22,7 @@ pub mod touch {
     pub type SCL = P1_02; //P34
     pub type RST = P1_03; //P35
     pub type IRQ = P1_04; //P36
+    pub const ADDR: u8 = 0x15;
 }
 
 pub mod vibrate {

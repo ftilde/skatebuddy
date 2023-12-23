@@ -38,7 +38,7 @@ impl<'a> Mag<'a> {
         let cmd = [0x3e];
         let mut res = [0];
         self.i2c.write_read(hw::ADDR, &cmd, &mut res).await.unwrap();
-
+        //defmt::println!("Status after start: {:b}", res[0]);
         Timer::after(Duration::from_millis(100)).await;
 
         let cmd = [0x4e];

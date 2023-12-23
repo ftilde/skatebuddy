@@ -37,16 +37,17 @@ mod hardware;
 mod lpm013m1126c;
 mod mag;
 mod time;
+mod touch;
 mod util;
 
 use embassy_executor::Spawner;
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Input, Level, Output, OutputDrive, Pull},
-    peripherals::TWISPI1,
+    peripherals::{TWISPI0, TWISPI1},
     saadc, spim, twim,
 };
-use embassy_time::{Duration, Instant, Ticker, Timer};
+use embassy_time::{Duration, Instant, Ticker};
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
@@ -55,50 +56,6 @@ bind_interrupts!(struct Irqs {
     SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI1>;
     UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<gps::UartInstance>;
 });
-
-static TOUCH_COUNTER: core::sync::atomic::AtomicU32 = core::sync::atomic::AtomicU32::new(0);
-
-#[embassy_executor::task]
-async fn touch_task(
-    mut twim: embassy_nrf::peripherals::TWISPI0,
-    mut touch_sda: hardware::touch::SDA,
-    mut touch_scl: hardware::touch::SCL,
-    touch_reset: hardware::touch::RST,
-    touch_int: hardware::touch::IRQ,
-) {
-    let mut touch_reset = Output::new(touch_reset, Level::Low, OutputDrive::Standard);
-    let mut touch_int = Input::new(touch_int, Pull::None);
-
-    loop {
-        touch_reset.set_low();
-        Timer::after(Duration::from_millis(20)).await;
-        touch_reset.set_high();
-        Timer::after(Duration::from_millis(200)).await;
-
-        let touch_addr = 0x15; //TODO: use config
-
-        //This is something else, but used in espruino.
-        //Mabye this is actual sleep?
-        let reg_addr = 0xE5;
-
-        ////This is sleep mode according to official example code (but looks like standby???
-        //let reg_addr = 0xA5;
-
-        {
-            let config = twim::Config::default();
-            let mut i2c = twim::Twim::new(&mut twim, Irqs, &mut touch_sda, &mut touch_scl, config);
-
-            let reg_val = 0x03;
-            let buf = [reg_addr, reg_val];
-            i2c.write(touch_addr, &buf).await.unwrap();
-        }
-
-        touch_int.wait_for_low().await;
-
-        let prev = TOUCH_COUNTER.fetch_add(1, core::sync::atomic::Ordering::SeqCst);
-        defmt::println!("Got a touch event! {}", prev);
-    }
-}
 
 #[embassy_executor::task]
 async fn accel_task(
@@ -191,15 +148,17 @@ struct Context {
     start_time: Instant,
     spi: embassy_nrf::peripherals::SPI2,
     mag: mag::MagRessources,
+    touch: touch::TouchRessources,
+    twi0: TWISPI0,
     twi1: TWISPI1,
-    //dcb: cortex_m::peripheral::DCB,
 }
 
 async fn idle(ctx: &mut Context) {
     ctx.lcd.off();
     ctx.backlight.off();
 
-    ctx.button.wait_for_press().await;
+    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event()).await;
 }
 
 pub enum DisplayEvent {
@@ -445,6 +404,9 @@ async fn main(spawner: Spawner) {
 
     let backlight = display::Backlight::new(p.P0_08);
 
+    let touch =
+        touch::TouchRessources::new(p.P1_01, p.P1_02, p.P1_03, p.P1_04, &mut p.TWISPI0).await;
+
     let gps = gps::GPSRessources::new(
         p.P0_29,
         p.P0_31,
@@ -470,12 +432,14 @@ async fn main(spawner: Spawner) {
         spi: p.SPI2,
         start_time: Instant::now(),
         mag,
+        touch,
+        twi0: p.TWISPI0,
         twi1: p.TWISPI1,
     };
 
-    spawner
-        .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
-        .unwrap();
+    //spawner
+    //    .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
+    //    .unwrap();
 
     {
         let mut mag = ctx.mag.on(&mut ctx.twi1).await;
