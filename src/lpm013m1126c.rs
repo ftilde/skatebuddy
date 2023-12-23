@@ -19,12 +19,16 @@ const NUM_BYTES_PER_ROW: usize = WIDTH / NUM_PIXELS_PER_CELL + NUM_PREFIX_BYTES_
 const NUM_REQUIRED_SUFFIX_BYTES: usize = 2; // We need 16 more clock cycles after the last row.
 
 pub struct Buffer {
+    min_row: u8,
+    max_row: u8,
     values: [u8; NUM_BYTES_PER_ROW * HEIGHT + NUM_REQUIRED_SUFFIX_BYTES],
 }
 
 impl Default for Buffer {
     fn default() -> Self {
         let mut ret = Self {
+            min_row: u8::MAX,
+            max_row: 0,
             values: core::array::from_fn(|_| 0),
         };
 
@@ -59,6 +63,9 @@ impl Buffer {
             return;
         }
 
+        self.min_row = self.min_row.min(row as u8);
+        self.max_row = self.max_row.max(row as u8);
+
         let col_cell = col / NUM_PIXELS_PER_CELL;
 
         let cell_idx = row * NUM_BYTES_PER_ROW + col_cell + NUM_PREFIX_BYTES_PER_ROW;
@@ -73,6 +80,9 @@ impl Buffer {
         *v = (*v & !mask) | (val.0 << shift_amt);
     }
     pub fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
+        self.min_row = self.min_row.min(lines.start as u8);
+        self.max_row = self.max_row.max((lines.end - 1) as u8);
+
         let nv = val.0 | val.0 << NUM_BITS_PER_PIXEL;
         assert!(lines.end <= HEIGHT);
         for r in lines {
@@ -96,12 +106,23 @@ impl Buffer {
     }
 
     pub async fn present<'a, SPI: embedded_hal_async::spi::SpiDevice>(&mut self, spi: &mut SPI) {
+        if self.max_row < self.min_row {
+            return;
+        }
+
+        let begin = self.min_row as usize * NUM_BYTES_PER_ROW;
+        let end = (self.max_row as usize + 1) * NUM_BYTES_PER_ROW + NUM_REQUIRED_SUFFIX_BYTES;
+        let buffer_to_present = &self.values[begin..end];
+        defmt::println!("present: {} bytes", end - begin);
         spi.transaction(&mut [
-            embedded_hal_async::spi::Operation::Write(&self.values),
+            embedded_hal_async::spi::Operation::Write(&buffer_to_present),
             embedded_hal_async::spi::Operation::DelayUs(10),
         ])
         .await
         .unwrap();
+
+        self.min_row = u8::MAX;
+        self.max_row = 0;
     }
 }
 
