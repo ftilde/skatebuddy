@@ -57,5 +57,6 @@ embedded-hal-async = "1.0.0-rc.1"
 core2 = { version = "0.4.0", default-features = false }
 chrono = { version = "0.4.31", default-features = false }
 bitvec = { version = "1.0.1", default-features = false }
+num_enum = { version = "0.7.1", default-features = false }
 embedded-io-async = "0.5.0"
 util = { path = "./util" }

@@ -161,6 +161,25 @@ async fn idle(ctx: &mut Context) {
     embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event()).await;
 }
 
+async fn touch_playground(ctx: &mut Context) {
+    ctx.lcd.off();
+    ctx.backlight.off();
+
+    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    loop {
+        match embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event())
+            .await
+        {
+            embassy_futures::select::Either::First(_) => {
+                break;
+            }
+            embassy_futures::select::Either::Second(e) => {
+                defmt::println!("Touch: {:?}", e);
+            }
+        }
+    }
+}
+
 pub enum DisplayEvent {
     NewBatData,
 }
@@ -454,6 +473,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(time::clock_sync_task(gps)).unwrap();
 
     loop {
+        touch_playground(&mut ctx).await;
         display_stuff(&mut ctx).await;
         idle(&mut ctx).await;
     }

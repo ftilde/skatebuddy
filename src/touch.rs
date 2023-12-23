@@ -15,10 +15,15 @@ pub struct TouchRessources {
 type I2CInstance = embassy_nrf::peripherals::TWISPI0;
 
 // From espruino. not documented anywhere else, afaik, though...
-const REG_ADDR_SLEEP: u8 = 0xE5;
+const CMD_SLEEP: [u8; 2] = [0xE5, 0x03];
 
 // This is sleep mode according to official example code (but looks like standby???
-const REG_ADDR_STANDBY: u8 = 0xA5;
+const CMD_STANDBY: [u8; 2] = [0xA5, 0x03];
+
+const CMD_READ_EVENT: [u8; 1] = [0x01];
+
+//const TOUCH_AREA_HEIGHT: usize = 160;
+//const TOUCH_AREA_WIDTH: usize = 160;
 
 impl TouchRessources {
     pub async fn new(
@@ -77,19 +82,83 @@ fn build_i2c<'a>(
 impl<'a> Drop for Touch<'a> {
     fn drop(&mut self) {
         let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
-        let reg_val = 0x03;
-        let buf = [REG_ADDR_SLEEP, reg_val];
-        i2c.blocking_write(hw::ADDR, &buf).unwrap();
+        i2c.blocking_write(hw::ADDR, &CMD_SLEEP).unwrap();
     }
 }
 
 impl<'a> Touch<'a> {
-    pub async fn wait_for_event(&mut self) {
+    pub async fn wait_for_event(&mut self) -> TouchEvent {
         self.hw.irq.wait_for_low().await;
 
         let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
-        let reg_val = 0x03;
-        let buf = [REG_ADDR_STANDBY, reg_val];
-        i2c.write(hw::ADDR, &buf).await.unwrap();
+
+        let mut buf = [0u8; 6];
+        i2c.write_read(hw::ADDR, &CMD_READ_EVENT, &mut buf)
+            .await
+            .unwrap();
+
+        let kind = EventKind::try_from(buf[2] >> 6).unwrap();
+
+        let n_points = buf[1];
+        let gesture = Gesture::try_from(buf[0]).unwrap();
+
+        // Espruino adjusts these, but it seems like the range is actually [0, 175]?
+        //let x = (buf[3] as usize * crate::lpm013m1126c::WIDTH / TOUCH_AREA_WIDTH) as u8;
+        let x = buf[3];
+        //let y = (buf[5] as usize * crate::lpm013m1126c::HEIGHT / TOUCH_AREA_HEIGHT) as u8;
+        let y = buf[5];
+
+        let event = TouchEvent {
+            gesture,
+            n_points,
+            kind,
+            x,
+            y,
+        };
+
+        if let EventKind::Release = kind {
+            i2c.write(hw::ADDR, &CMD_STANDBY).await.unwrap();
+        }
+
+        event
     }
+
+    pub async fn wait_for_action(&mut self) -> TouchEvent {
+        loop {
+            let event = self.wait_for_event().await;
+            if let EventKind::Release = event.kind {
+                return event;
+            }
+        }
+    }
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, defmt::Format, num_enum::TryFromPrimitive)]
+pub enum EventKind {
+    Press = 0,
+    Release = 1,
+    Hold = 2,
+}
+
+#[repr(u8)]
+#[derive(Copy, Clone, defmt::Format, num_enum::TryFromPrimitive)]
+pub enum Gesture {
+    None = 0,
+    SwipeDown = 1,
+    SwipeUp = 2,
+    SwipeLeft = 3,
+    SwipeRight = 4,
+    SinglePress = 5,
+    DoublePress = 11,
+    LongPress = 12,
+}
+
+#[derive(Copy, Clone, defmt::Format)]
+pub struct TouchEvent {
+    pub gesture: Gesture,
+    pub n_points: u8,
+    pub kind: EventKind,
+    pub x: u8,
+    pub y: u8,
 }
