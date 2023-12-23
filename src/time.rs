@@ -9,8 +9,8 @@ use crate::gps;
 
 #[embassy_executor::task]
 pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
-    const INITIAL_SYNC_TIME: Duration = Duration::from_secs(15 * 60);
-    const INCREMENTAL_SYNC_TIME: Duration = Duration::from_secs(2 * 60);
+    const INITIAL_SYNC_TIME: Duration = Duration::from_secs(2 * 60);
+    const INCREMENTAL_SYNC_TIME: Duration = Duration::from_secs(1 * 60);
 
     let mut sync_time = INITIAL_SYNC_TIME;
 
