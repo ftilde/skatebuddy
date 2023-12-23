@@ -162,51 +162,47 @@ async fn idle(ctx: &mut Context) {
 }
 
 async fn touch_playground(ctx: &mut Context) {
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
-
     ctx.lcd.on();
 
     ctx.lcd.fill(Rgb111::white());
+    ctx.lcd.present(&mut ctx.spi).await;
+
+    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
     //ctx.backlight.off();
-    'outer: loop {
-        //Circle::new(Point::new(5, i), 40)
-        //    .into_styled(
-        //        PrimitiveStyleBuilder::new()
-        //            .stroke_color(Rgb111::white())
-        //            .stroke_width(1)
-        //            .fill_color(Rgb111::blue())
-        //            .build(),
-        //    )
-        //    .draw(&mut lcd)
-        //    .unwrap();
-
-        ctx.lcd.present(&mut ctx.spi).await;
-
-        let mut update_begin: Option<Instant> = None;
-        loop {
-            match embassy_futures::select::select(
-                ctx.button.wait_for_press(),
-                touch.wait_for_event(),
-            )
+    let mut prev_point = None;
+    loop {
+        match embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event())
             .await
-            {
-                embassy_futures::select::Either::First(_) => {
-                    break 'outer;
+        {
+            embassy_futures::select::Either::First(_) => {
+                break;
+            }
+            embassy_futures::select::Either::Second(e) => {
+                defmt::println!("Touch: {:?}", e);
+
+                let point = Point::new(e.x.into(), e.y.into());
+                if let Some(pp) = prev_point {
+                    embedded_graphics::primitives::Line::new(point, pp)
+                        .into_styled(embedded_graphics::primitives::PrimitiveStyle::with_stroke(
+                            Rgb111::black(),
+                            3,
+                        ))
+                        .draw(&mut *ctx.lcd)
+                        .unwrap();
+                    defmt::println!("Draw from {}:{} to {}:{}", point.x, point.y, pp.x, pp.y);
                 }
-                embassy_futures::select::Either::Second(e) => {
-                    defmt::println!("Touch: {:?}", e);
-                    ctx.lcd.set(e.y as i32, e.x as i32, Rgb111::black());
-                    if let Some(update_begin) = update_begin {
-                        if update_begin.elapsed() > Duration::from_hz(30) {
-                            break;
-                        }
-                    } else {
-                        update_begin = Some(Instant::now());
-                    }
+
+                if let touch::EventKind::Release = e.kind {
+                    prev_point = None;
+                } else {
+                    prev_point = Some(point);
                 }
             }
         }
+        ctx.lcd.present(&mut ctx.spi).await;
+
+        defmt::println!("we done presenting");
     }
 }
 
