@@ -162,19 +162,49 @@ async fn idle(ctx: &mut Context) {
 }
 
 async fn touch_playground(ctx: &mut Context) {
-    ctx.lcd.off();
-    ctx.backlight.off();
-
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
-    loop {
-        match embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event())
+
+    ctx.lcd.on();
+
+    ctx.lcd.fill(Rgb111::white());
+
+    //ctx.backlight.off();
+    'outer: loop {
+        //Circle::new(Point::new(5, i), 40)
+        //    .into_styled(
+        //        PrimitiveStyleBuilder::new()
+        //            .stroke_color(Rgb111::white())
+        //            .stroke_width(1)
+        //            .fill_color(Rgb111::blue())
+        //            .build(),
+        //    )
+        //    .draw(&mut lcd)
+        //    .unwrap();
+
+        ctx.lcd.present(&mut ctx.spi).await;
+
+        let mut update_begin: Option<Instant> = None;
+        loop {
+            match embassy_futures::select::select(
+                ctx.button.wait_for_press(),
+                touch.wait_for_event(),
+            )
             .await
-        {
-            embassy_futures::select::Either::First(_) => {
-                break;
-            }
-            embassy_futures::select::Either::Second(e) => {
-                defmt::println!("Touch: {:?}", e);
+            {
+                embassy_futures::select::Either::First(_) => {
+                    break 'outer;
+                }
+                embassy_futures::select::Either::Second(e) => {
+                    defmt::println!("Touch: {:?}", e);
+                    ctx.lcd.set(e.y as i32, e.x as i32, Rgb111::black());
+                    if let Some(update_begin) = update_begin {
+                        if update_begin.elapsed() > Duration::from_hz(30) {
+                            break;
+                        }
+                    } else {
+                        update_begin = Some(Instant::now());
+                    }
+                }
             }
         }
     }
