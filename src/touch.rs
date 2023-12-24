@@ -123,14 +123,14 @@ impl<'a> Touch<'a> {
         event
     }
 
-    pub async fn wait_for_action(&mut self) -> TouchEvent {
-        loop {
-            let event = self.wait_for_event().await;
-            if let EventKind::Release = event.kind {
-                return event;
-            }
-        }
-    }
+    //pub async fn wait_for_action(&mut self) -> TouchEvent {
+    //    loop {
+    //        let event = self.wait_for_event().await;
+    //        if let EventKind::Release = event.kind {
+    //            return event;
+    //        }
+    //    }
+    //}
 }
 
 #[repr(u8)]

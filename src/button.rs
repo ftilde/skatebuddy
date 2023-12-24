@@ -14,12 +14,12 @@ pub struct Button {
     last_release: Instant,
 }
 
-fn other(l: Level) -> Level {
-    match l {
-        Level::Low => Level::High,
-        Level::High => Level::Low,
-    }
-}
+//fn other(l: Level) -> Level {
+//    match l {
+//        Level::Low => Level::High,
+//        Level::High => Level::Low,
+//    }
+//}
 impl Button {
     pub fn new(pin: hw::EN) -> Self {
         let now = Instant::now();
@@ -73,8 +73,8 @@ impl Button {
         self.last_press.elapsed()
     }
 
-    pub async fn wait_for_change(&mut self) -> Level {
-        self.wait_for_state(other(self.last_state.0)).await;
-        self.last_state.0
-    }
+    //pub async fn wait_for_change(&mut self) -> Level {
+    //    self.wait_for_state(other(self.last_state.0)).await;
+    //    self.last_state.0
+    //}
 }

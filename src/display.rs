@@ -184,11 +184,11 @@ impl Backlight {
         self.set();
     }
 
-    pub fn toggle(&mut self) {
-        self.level = match self.level {
-            Level::Low => Level::High,
-            Level::High => Level::Low,
-        };
-        self.set();
-    }
+    //pub fn toggle(&mut self) {
+    //    self.level = match self.level {
+    //        Level::Low => Level::High,
+    //        Level::High => Level::Low,
+    //    };
+    //    self.set();
+    //}
 }

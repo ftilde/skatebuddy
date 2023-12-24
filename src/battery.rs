@@ -69,17 +69,17 @@ impl Battery {
         bat_buf[0]
     }
 
-    pub async fn read_specific_mean(&mut self, n: u32, duration: Duration) -> Reading {
-        assert!(n > 0);
-        let mut sum = 0;
-        for _ in 0..n {
-            embassy_time::Timer::after(duration).await;
-            let sample = self.read_sample().await;
-            sum += (sample as u32) << 8;
-        }
-        let mean = sum / n;
-        Reading { raw: mean << 8 }
-    }
+    //pub async fn read_specific_mean(&mut self, n: u32, duration: Duration) -> Reading {
+    //    assert!(n > 0);
+    //    let mut sum = 0;
+    //    for _ in 0..n {
+    //        embassy_time::Timer::after(duration).await;
+    //        let sample = self.read_sample().await;
+    //        sum += (sample as u32) << 8;
+    //    }
+    //    let mean = sum / n;
+    //    Reading { raw: mean << 8 }
+    //}
 
     pub async fn read_specific_median(&mut self, vals: &mut [u32], duration: Duration) -> Reading {
         assert!(vals.len() > 0);
@@ -101,12 +101,12 @@ impl Battery {
         //self.read_specific_mean(16, Duration::from_millis(100))
         //    .await
     }
-    pub async fn read(&mut self) -> Reading {
-        //let mut vals = [0; 17];
-        //self.read_specific_median(&mut vals, Duration::from_millis(100))
-        //    .await
-        self.read_specific_mean(1, Duration::from_millis(0)).await
-    }
+    //pub async fn read(&mut self) -> Reading {
+    //    //let mut vals = [0; 17];
+    //    //self.read_specific_median(&mut vals, Duration::from_millis(100))
+    //    //    .await
+    //    self.read_specific_mean(1, Duration::from_millis(0)).await
+    //}
 }
 
 #[derive(Copy, Clone)]

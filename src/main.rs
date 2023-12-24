@@ -31,6 +31,7 @@ mod accel;
 mod battery;
 mod button;
 mod display;
+#[allow(unused)]
 mod flash;
 mod gps;
 mod hardware;
@@ -135,6 +136,7 @@ async fn idle(ctx: &mut Context) {
 
 async fn touch_playground(ctx: &mut Context) {
     ctx.lcd.on();
+    ctx.backlight.on();
 
     ctx.lcd.fill(Rgb111::white());
     ctx.lcd.present(&mut ctx.spi).await;
@@ -182,6 +184,8 @@ async fn touch_playground(ctx: &mut Context) {
 
         defmt::println!("we done presenting");
     }
+
+    ctx.backlight.off();
 }
 
 pub enum DisplayEvent {
