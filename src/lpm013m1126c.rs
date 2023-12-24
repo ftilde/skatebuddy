@@ -127,6 +127,39 @@ impl Buffer {
 }
 
 #[derive(Copy, Clone)]
+#[repr(u8)]
+#[allow(unused)]
+pub enum BlinkMode {
+    Black = 0b000100_00,
+    White = 0b000110_00,
+    Inverted = 0b000101_00,
+    Normal = 0b000000_00,
+}
+
+pub async fn blink<'a, SPI: embedded_hal_async::spi::SpiDevice>(spi: &mut SPI, mode: BlinkMode) {
+    let buffer = [mode as u8, 0]; // Dummy byte to send for at least 16 cycles
+
+    spi.transaction(&mut [
+        embedded_hal_async::spi::Operation::Write(&buffer),
+        embedded_hal_async::spi::Operation::DelayUs(10),
+    ])
+    .await
+    .unwrap();
+}
+
+pub async fn clear<'a, SPI: embedded_hal_async::spi::SpiDevice>(spi: &mut SPI) {
+    let cmd = 0b001000_00;
+    let buffer = [cmd, 0]; // Dummy byte to send for at least 16 cycles
+
+    spi.transaction(&mut [
+        embedded_hal_async::spi::Operation::Write(&buffer),
+        embedded_hal_async::spi::Operation::DelayUs(10),
+    ])
+    .await
+    .unwrap();
+}
+
+#[derive(Copy, Clone)]
 pub struct BWConfig {
     pub on: Rgb111,
     pub off: Rgb111,

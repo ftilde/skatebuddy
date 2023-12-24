@@ -25,7 +25,7 @@ use panic_probe as _; //panic handler
 
 //use nrf52840_hal::{gpio::Level, prelude::*};
 
-use crate::lpm013m1126c::Rgb111;
+use crate::lpm013m1126c::{BlinkMode, Rgb111};
 
 mod accel;
 mod battery;
@@ -154,6 +154,7 @@ struct Context {
 }
 
 async fn idle(ctx: &mut Context) {
+    ctx.lcd.clear(&mut ctx.spi).await;
     ctx.lcd.off();
     ctx.backlight.off();
 
@@ -193,11 +194,17 @@ async fn touch_playground(ctx: &mut Context) {
                     defmt::println!("Draw from {}:{} to {}:{}", point.x, point.y, pp.x, pp.y);
                 }
 
-                if let touch::EventKind::Release = e.kind {
-                    prev_point = None;
-                } else {
-                    prev_point = Some(point);
-                }
+                prev_point = match e.kind {
+                    touch::EventKind::Press => {
+                        ctx.lcd.blink(&mut ctx.spi, BlinkMode::Inverted).await;
+                        Some(point)
+                    }
+                    touch::EventKind::Release => {
+                        ctx.lcd.blink(&mut ctx.spi, BlinkMode::Normal).await;
+                        None
+                    }
+                    touch::EventKind::Hold => Some(point),
+                };
             }
         }
         ctx.lcd.present(&mut ctx.spi).await;
