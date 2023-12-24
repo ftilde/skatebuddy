@@ -57,35 +57,6 @@ bind_interrupts!(struct Irqs {
     UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<gps::UartInstance>;
 });
 
-#[embassy_executor::task]
-async fn accel_task(
-    twim: embassy_nrf::peripherals::TWISPI1,
-    accel_sda: hardware::accel::SDA,
-    accel_scl: hardware::accel::SCL,
-) {
-    let mut accel = crate::accel::AccelRessources::new(twim, accel_sda, accel_scl);
-
-    let config = accel::Config::new();
-    let mut accel = accel.on(config).await;
-
-    let mut ticker = Ticker::every(Duration::from_secs(1));
-    for _ in 0..1 {
-        let _reading = accel.reading_nf().await;
-        let _reading_hf = accel.reading_hf().await;
-
-        //defmt::println!(
-        //    "Accel: x: {}, y: {}, z: {}, xh: {}, yh: {}, zh: {}",
-        //    reading.x,
-        //    reading.y,
-        //    reading.z,
-        //    reading_hf.x,
-        //    reading_hf.y,
-        //    reading_hf.z
-        //);
-        ticker.next().await;
-    }
-}
-
 async fn render_top_bar(ctx: &mut Context) {
     let bw_config = lpm013m1126c::BWConfig {
         off: Rgb111::black(),
@@ -342,61 +313,6 @@ async fn display_stuff(ctx: &mut Context) {
     }
 }
 
-fn dump_peripheral_regs() {
-    let foo = unsafe { nrf52840_hal::pac::Peripherals::steal() };
-    defmt::println!("mrs: {:b}", foo.POWER.mainregstatus.read().bits());
-    defmt::println!("dcd: {:b}", foo.POWER.dcdcen.read().bits());
-    defmt::println!("dcd0: {:b}", foo.POWER.dcdcen0.read().bits());
-
-    defmt::println!("spi0: {:b}", foo.SPI0.enable.read().bits());
-    defmt::println!("spi1: {:b}", foo.SPI1.enable.read().bits());
-    defmt::println!("spi2: {:b}", foo.SPI2.enable.read().bits());
-    defmt::println!("spim0: {:b}", foo.SPIM0.enable.read().bits());
-    defmt::println!("spim1: {:b}", foo.SPIM1.enable.read().bits());
-    defmt::println!("spim2: {:b}", foo.SPIM2.enable.read().bits());
-    defmt::println!("spim3: {:b}", foo.SPIM3.enable.read().bits());
-    defmt::println!("spis0: {:b}", foo.SPIS0.enable.read().bits());
-    defmt::println!("spis1: {:b}", foo.SPIS1.enable.read().bits());
-    defmt::println!("spis2: {:b}", foo.SPIS2.enable.read().bits());
-
-    defmt::println!("twi0: {:b}", foo.TWI0.enable.read().bits());
-    defmt::println!("twi1: {:b}", foo.TWI1.enable.read().bits());
-    defmt::println!("twim0: {:b}", foo.TWIM0.enable.read().bits());
-    defmt::println!("twim1: {:b}", foo.TWIM1.enable.read().bits());
-    defmt::println!("twis0: {:b}", foo.TWIS0.enable.read().bits());
-    defmt::println!("twis1: {:b}", foo.TWIS1.enable.read().bits());
-
-    defmt::println!("uart0: {:b}", foo.UART0.enable.read().bits());
-    defmt::println!("uarte0: {:b}", foo.UARTE0.enable.read().bits());
-    defmt::println!("uarte1: {:b}", foo.UARTE1.enable.read().bits());
-
-    defmt::println!("radio: {:b}", foo.RADIO.power.read().bits());
-    defmt::println!("radio (state): {:b}", foo.RADIO.state.read().bits());
-
-    defmt::println!("i2s: {:b}", foo.I2S.enable.read().bits());
-    defmt::println!("qspi: {:b}", foo.QSPI.enable.read().bits());
-    defmt::println!("qdec: {:b}", foo.QDEC.enable.read().bits());
-    defmt::println!("qdec: {:b}", foo.QDEC.enable.read().bits());
-
-    defmt::println!("pwm0: {:b}", foo.PWM0.enable.read().bits());
-    defmt::println!("pwm1: {:b}", foo.PWM1.enable.read().bits());
-    defmt::println!("pwm2: {:b}", foo.PWM2.enable.read().bits());
-    defmt::println!("pwm3: {:b}", foo.PWM3.enable.read().bits());
-
-    defmt::println!("pdm: {:b}", foo.PDM.enable.read().bits());
-
-    defmt::println!("saadc: {:b}", foo.SAADC.enable.read().bits());
-    defmt::println!("usb: {:b}", foo.USBD.enable.read().bits());
-    defmt::println!("aar: {:b}", foo.AAR.enable.read().bits());
-    defmt::println!("ccm: {:b}", foo.CCM.enable.read().bits());
-    defmt::println!("crypto: {:b}", foo.CRYPTOCELL.enable.read().bits());
-
-    defmt::println!("nfct: {:b}", foo.NFCT.sleepstate.read().bits()); //NOT Sure if this is telling
-                                                                      //us anything
-
-    //TODO: look at gpio?
-}
-
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let mut conf = embassy_nrf::config::Config::default();
@@ -489,19 +405,35 @@ async fn main(spawner: Spawner) {
         twi1: p.TWISPI1,
     };
 
-    //spawner
-    //    .spawn(touch_task(p.TWISPI0, p.P1_01, p.P1_02, p.P1_03, p.P1_04))
-    //    .unwrap();
-
     {
         let mut mag = ctx.mag.on(&mut ctx.twi1).await;
         let r = mag.read().await;
         defmt::println!("mag: {:?}", r);
     }
 
-    //spawner
-    //    .spawn(accel_task(p.TWISPI1, p.P1_06, p.P1_05))
-    //    .unwrap();
+    {
+        let mut accel = crate::accel::AccelRessources::new(p.P1_06, p.P1_05);
+
+        let config = accel::Config::new();
+        let mut accel = accel.on(&mut ctx.twi1, config).await;
+
+        let mut ticker = Ticker::every(Duration::from_secs(1));
+        for _ in 0..1 {
+            let reading = accel.reading_nf().await;
+            let reading_hf = accel.reading_hf().await;
+
+            defmt::println!(
+                "Accel: x: {}, y: {}, z: {}, xh: {}, yh: {}, zh: {}",
+                reading.x,
+                reading.y,
+                reading.z,
+                reading_hf.x,
+                reading_hf.y,
+                reading_hf.z
+            );
+            ticker.next().await;
+        }
+    }
 
     spawner.spawn(time::clock_sync_task(gps)).unwrap();
 

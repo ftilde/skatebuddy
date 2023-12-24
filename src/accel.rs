@@ -12,18 +12,17 @@ const ADDR_XHPL: u8 = 0x00;
 const ADDR_XOUTL: u8 = 0x06;
 
 pub struct AccelRessources {
-    instance: I2CInstance,
     sda: hw::SDA,
     scl: hw::SCL,
 }
 
 impl AccelRessources {
-    pub fn new(instance: I2CInstance, sda: hw::SDA, scl: hw::SCL) -> Self {
-        Self { instance, sda, scl }
+    pub fn new(sda: hw::SDA, scl: hw::SCL) -> Self {
+        Self { sda, scl }
     }
 
-    pub async fn on(&mut self, config: Config) -> Accel {
-        Accel::new(self, config).await
+    pub async fn on<'a>(&'a mut self, instance: &'a mut I2CInstance, config: Config) -> Accel<'a> {
+        Accel::new(self, instance, config).await
     }
 }
 
@@ -44,17 +43,15 @@ impl<'a> Accel<'a> {
         self.i2c.write(hw::ADDR, &wbuf).await.unwrap();
     }
 
-    async fn new(hw: &'a mut AccelRessources, config: Config) -> Accel<'a> {
+    async fn new(
+        hw: &'a mut AccelRessources,
+        instance: &'a mut I2CInstance,
+        config: Config,
+    ) -> Accel<'a> {
         let mut i2c_conf = twim::Config::default();
         i2c_conf.frequency = embassy_nrf::twim::Frequency::K400;
 
-        let i2c = twim::Twim::new(
-            &mut hw.instance,
-            crate::Irqs,
-            &mut hw.sda,
-            &mut hw.scl,
-            i2c_conf,
-        );
+        let i2c = twim::Twim::new(instance, crate::Irqs, &mut hw.sda, &mut hw.scl, i2c_conf);
 
         let v = config.cntl1.as_raw_slice()[0];
         let mut s = Self { i2c, config };
@@ -111,12 +108,12 @@ pub struct Config {
     //cntl3: u8,
 }
 
-#[repr(u8)]
-pub enum Range {
-    G2 = 0,
-    G4 = 1,
-    G8 = 2,
-}
+//#[repr(u8)]
+//pub enum Range {
+//    G2 = 0,
+//    G4 = 1,
+//    G8 = 2,
+//}
 
 impl Config {
     pub fn new() -> Self {
@@ -124,12 +121,12 @@ impl Config {
             cntl1: bitarr![u8, Lsb0; 0, 0, 0, 0, 0, 0, 0, 1],
         }
     }
-    pub fn high_res(&mut self, set: bool) {
-        self.cntl1.set(6, set)
-    }
-    pub fn range(&mut self, range: Range) {
-        let r = range as u8;
-        self.cntl1.set(3, (r & 1) != 0);
-        self.cntl1.set(4, (r & 2) != 0);
-    }
+    //pub fn high_res(&mut self, set: bool) {
+    //    self.cntl1.set(6, set)
+    //}
+    //pub fn range(&mut self, range: Range) {
+    //    let r = range as u8;
+    //    self.cntl1.set(3, (r & 1) != 0);
+    //    self.cntl1.set(4, (r & 2) != 0);
+    //}
 }
