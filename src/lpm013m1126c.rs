@@ -2,8 +2,8 @@ use core::ops::Range;
 
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
 
-const WIDTH: usize = 176;
-const HEIGHT: usize = 176;
+pub const WIDTH: usize = 176;
+pub const HEIGHT: usize = 176;
 
 pub const SPI_MODE: embedded_hal::spi::Mode = embedded_hal::spi::Mode {
     polarity: embedded_hal::spi::Polarity::IdleLow,
@@ -113,7 +113,7 @@ impl Buffer {
         let begin = self.min_row as usize * NUM_BYTES_PER_ROW;
         let end = (self.max_row as usize + 1) * NUM_BYTES_PER_ROW + NUM_REQUIRED_SUFFIX_BYTES;
         let buffer_to_present = &self.values[begin..end];
-        defmt::println!("present: {} bytes", end - begin);
+        //defmt::println!("present: {} bytes", end - begin);
         spi.transaction(&mut [
             embedded_hal_async::spi::Operation::Write(&buffer_to_present),
             embedded_hal_async::spi::Operation::DelayUs(10),
@@ -224,6 +224,12 @@ impl<'a> DrawTarget for BufferBW<'a> {
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct Rgb111(u8);
+
+impl Default for Rgb111 {
+    fn default() -> Self {
+        Self::black()
+    }
+}
 
 impl PixelColor for Rgb111 {
     type Raw = embedded_graphics::pixelcolor::raw::RawU4;

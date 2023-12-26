@@ -4,6 +4,7 @@ use embassy_nrf::{
     twim,
 };
 use embassy_time::{Duration, Timer};
+use embedded_graphics::prelude::Point;
 
 pub struct TouchRessources {
     scl: hw::SCL,
@@ -123,14 +124,14 @@ impl<'a> Touch<'a> {
         event
     }
 
-    //pub async fn wait_for_action(&mut self) -> TouchEvent {
-    //    loop {
-    //        let event = self.wait_for_event().await;
-    //        if let EventKind::Release = event.kind {
-    //            return event;
-    //        }
-    //    }
-    //}
+    pub async fn wait_for_action(&mut self) -> TouchEvent {
+        loop {
+            let event = self.wait_for_event().await;
+            if let EventKind::Release | EventKind::Press = event.kind {
+                return event;
+            }
+        }
+    }
 }
 
 #[repr(u8)]
@@ -161,4 +162,13 @@ pub struct TouchEvent {
     pub kind: EventKind,
     pub x: u8,
     pub y: u8,
+}
+
+impl TouchEvent {
+    pub fn point(&self) -> Point {
+        Point {
+            x: self.x as _,
+            y: self.y as _,
+        }
+    }
 }

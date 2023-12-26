@@ -13,9 +13,9 @@ pub struct Battery {
     bat_val_pin: hw::VOLTAGE,
 }
 
-pub struct BatteryChargeState<'a> {
-    charge_port_pin: Input<'a, hw::CHARGING>,
-    charge_complete_pin: Input<'a, hw::FULL>,
+pub struct BatteryChargeState {
+    charge_port_pin: Input<'static, hw::CHARGING>,
+    charge_complete_pin: Input<'static, hw::FULL>,
 }
 
 pub enum ChargeState {
@@ -24,7 +24,7 @@ pub enum ChargeState {
     Draining,
 }
 
-impl<'a> BatteryChargeState<'a> {
+impl BatteryChargeState {
     pub fn new(charge_port_pin: hw::CHARGING, charge_complete_pin: hw::FULL) -> Self {
         let charge_port_pin = Input::new(charge_port_pin, Pull::None);
         let charge_complete_pin = Input::new(charge_complete_pin, Pull::None);
@@ -196,19 +196,19 @@ impl AsyncBattery {
         Self
     }
 
-    pub async fn read(&mut self) -> Reading {
+    pub async fn read(&self) -> Reading {
         Reading {
             raw: LAST_ASYNC_READING.load(Ordering::Relaxed),
         }
     }
 
-    pub fn current(&mut self) -> CurrentReading {
+    pub fn current(&self) -> CurrentReading {
         CurrentReading {
             micro_ampere: LAST_ASYNC_CURRENT.load(Ordering::Relaxed),
         }
     }
 
-    pub fn current_std(&mut self) -> CurrentReading {
+    pub fn current_std(&self) -> CurrentReading {
         CurrentReading {
             micro_ampere: LAST_ASYNC_CURRENT_STD.load(Ordering::Relaxed),
         }
