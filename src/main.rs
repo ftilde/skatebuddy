@@ -138,8 +138,7 @@ async fn idle(ctx: &mut Context) -> App {
     ctx.lcd.off();
     ctx.backlight.off();
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
-    embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event()).await;
+    ctx.button.wait_for_press().await;
 
     App::Menu
 }
