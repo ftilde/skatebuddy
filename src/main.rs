@@ -20,6 +20,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text;
 
 use defmt_rtt as _;
+use lpm013m1126c::BWConfig;
 //logger
 use nrf52840_hal as _; // memory layout
 use panic_probe as _;
@@ -337,6 +338,112 @@ enum App {
     Clock,
 }
 
+fn draw_centered(
+    ctx: &mut Context,
+    text: &str,
+    font: &bitmap_font::BitmapFont,
+    y: i32,
+    bw_config: BWConfig,
+) {
+    // TODO: Remove this terrible sin. I'm so sorry.
+    let text_len = text.len();
+
+    let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
+
+    let x = (lpm013m1126c::WIDTH - text_len * font.width() as usize) / 2;
+    Text::new(text, Point::new(x as i32, y), style)
+        .draw(&mut ctx.lcd.binary(bw_config))
+        .unwrap();
+}
+
+async fn clock(ctx: &mut Context) -> App {
+    let large_font = bitmap_font::tamzen::FONT_16x32_BOLD.pixel_double();
+    let small_font = bitmap_font::tamzen::FONT_16x32_BOLD;
+
+    let bw_config = lpm013m1126c::BWConfig {
+        off: Rgb111::black(),
+        on: Rgb111::white(),
+    };
+
+    let mut ticker = Ticker::every(Duration::from_secs(60));
+
+    ctx.lcd.on();
+    //ctx.backlight.off();
+    loop {
+        ctx.lcd.fill(bw_config.off);
+
+        if let Some(c) = time::now_local() {
+            use chrono::{Datelike, Timelike};
+            let time = arrform!(5, "{:0>2}:{:0>2}", c.hour(), c.minute());
+            let date = arrform!(10, "{:0>2}.{:0>2}.{:0>4}", c.day(), c.month(), c.year());
+
+            draw_centered(ctx, time.as_str(), &large_font, 40, bw_config);
+            draw_centered(ctx, date.as_str(), &small_font, 100, bw_config);
+        } else {
+            draw_centered(ctx, "SYNC", &large_font, 40, bw_config);
+        };
+
+        {
+            let tiny_font = bitmap_font::tamzen::FONT_12x24;
+            let tiny_style =
+                TextStyle::new(&tiny_font, embedded_graphics::pixelcolor::BinaryColor::On);
+
+            let v = ctx.battery.read().await;
+            let perc = v.percentage() as i32;
+
+            let bat = arrform!(
+                5,
+                "{: >3}%{}",
+                perc,
+                match ctx.bat_state.read() {
+                    battery::ChargeState::Full => 'F',
+                    battery::ChargeState::Charging => 'C',
+                    battery::ChargeState::Draining => 'D',
+                },
+            );
+            let col = if perc > 95 {
+                Rgb111::green()
+            } else if perc > 10 {
+                Rgb111::white()
+            } else {
+                Rgb111::red()
+            };
+
+            let bw_config = lpm013m1126c::BWConfig {
+                off: Rgb111::black(),
+                on: col,
+            };
+
+            let x = lpm013m1126c::WIDTH - bat.as_str().len() * tiny_font.width() as usize;
+            Text::new(bat.as_str(), Point::new(x as _, 0), tiny_style)
+                .draw(&mut ctx.lcd.binary(bw_config))
+                .unwrap();
+        }
+
+        ctx.lcd.present(&mut ctx.spi).await;
+
+        match embassy_futures::select::select3(
+            ticker.next(),
+            ctx.button.wait_for_press(),
+            DISPLAY_EVENT.wait(),
+        )
+        .await
+        {
+            embassy_futures::select::Either3::First(_) => {}
+            embassy_futures::select::Either3::Second(d) => {
+                if d > Duration::from_secs(1) {
+                    ctx.battery.reset().await;
+                } else {
+                    break App::Menu;
+                }
+            }
+            embassy_futures::select::Either3::Third(_event) => {
+                DISPLAY_EVENT.reset();
+            }
+        }
+    }
+}
+
 async fn menu(ctx: &mut Context) -> App {
     ctx.lcd.on();
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
@@ -530,7 +637,7 @@ async fn main(spawner: Spawner) {
             App::Info => display_stuff(&mut ctx).await,
             App::Idle => idle(&mut ctx).await,
             App::Menu => menu(&mut ctx).await,
-            App::Clock => display_stuff(&mut ctx).await,
+            App::Clock => clock(&mut ctx).await,
         }
     }
 }
