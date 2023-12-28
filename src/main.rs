@@ -52,7 +52,7 @@ use embassy_nrf::{
     peripherals::{TWISPI0, TWISPI1},
     saadc, spim, twim,
 };
-use embassy_time::{Duration, Instant, Ticker};
+use embassy_time::{Duration, Instant, Ticker, Timer};
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
@@ -364,8 +364,6 @@ async fn clock(ctx: &mut Context) -> App {
         on: Rgb111::white(),
     };
 
-    let mut ticker = Ticker::every(Duration::from_secs(60));
-
     ctx.lcd.on();
     //ctx.backlight.off();
     loop {
@@ -421,8 +419,18 @@ async fn clock(ctx: &mut Context) -> App {
 
         ctx.lcd.present(&mut ctx.spi).await;
 
+        let next_wakeup = if let Some(now) = time::now_local() {
+            use chrono::Timelike;
+            let wakeup =
+                time::to_instant(now.with_second(0).unwrap() + chrono::Duration::minutes(1))
+                    .unwrap();
+            Timer::at(wakeup)
+        } else {
+            Timer::after(Duration::from_secs(60))
+        };
+
         match embassy_futures::select::select3(
-            ticker.next(),
+            next_wakeup,
             ctx.button.wait_for_press(),
             DISPLAY_EVENT.wait(),
         )

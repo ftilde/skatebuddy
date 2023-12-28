@@ -143,3 +143,17 @@ pub fn now_local() -> Option<chrono::DateTime<chrono::FixedOffset>> {
     let offset = chrono::FixedOffset::east_opt(TZ_SECONDS_EAST.load(Ordering::Relaxed)).unwrap();
     Some(now.with_timezone(&offset))
 }
+
+pub fn to_instant<Tz: chrono::TimeZone>(t: chrono::DateTime<Tz>) -> Option<Instant> {
+    let utc = t.naive_utc();
+    let unix_seconds = utc.timestamp();
+
+    let offset = OFFSET_UTC_S.load(Ordering::Relaxed);
+    if offset == 0 {
+        return None;
+    }
+
+    let boot_seconds = unix_seconds - CONST_UTC_OFFSET_S as i64 - offset as i64;
+
+    Some(Instant::from_secs(boot_seconds as u64))
+}
