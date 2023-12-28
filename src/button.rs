@@ -31,7 +31,7 @@ impl Button {
         }
     }
 
-    fn state(&self) -> Level {
+    fn state(&mut self) -> Level {
         self.pin.get_level()
     }
 

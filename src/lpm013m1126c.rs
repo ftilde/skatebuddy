@@ -116,7 +116,7 @@ impl Buffer {
         //defmt::println!("present: {} bytes", end - begin);
         spi.transaction(&mut [
             embedded_hal_async::spi::Operation::Write(&buffer_to_present),
-            embedded_hal_async::spi::Operation::DelayUs(10),
+            embedded_hal_async::spi::Operation::DelayNs(10_000),
         ])
         .await
         .unwrap();
@@ -141,7 +141,7 @@ pub async fn blink<'a, SPI: embedded_hal_async::spi::SpiDevice>(spi: &mut SPI, m
 
     spi.transaction(&mut [
         embedded_hal_async::spi::Operation::Write(&buffer),
-        embedded_hal_async::spi::Operation::DelayUs(10),
+        embedded_hal_async::spi::Operation::DelayNs(10_000),
     ])
     .await
     .unwrap();
@@ -153,7 +153,7 @@ pub async fn clear<'a, SPI: embedded_hal_async::spi::SpiDevice>(spi: &mut SPI) {
 
     spi.transaction(&mut [
         embedded_hal_async::spi::Operation::Write(&buffer),
-        embedded_hal_async::spi::Operation::DelayUs(10),
+        embedded_hal_async::spi::Operation::DelayNs(10_000),
     ])
     .await
     .unwrap();

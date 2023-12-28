@@ -245,7 +245,9 @@ impl<'a> GPS<'a> {
         // First throw away everything until (and including) the first 0xff which signals the start
         // of the transmission
         loop {
+            defmt::println!("fill some");
             let n_new = self.line_buf.fill(&mut self.uart).await;
+            defmt::println!("filled some {}", n_new);
             let current_buf = self.line_buf.buf();
             if n_new == 0 {
                 defmt::println!("wait bc unchanged len");
@@ -267,6 +269,7 @@ impl<'a> GPS<'a> {
             match m {
                 Message::Casic(_c) => {}
                 Message::Nmea(c) => {
+                    defmt::println!("gps {}", n);
                     if &c[..6] == b"$GPTXT" {
                         n += 1;
                         if n == 5 {
@@ -278,6 +281,7 @@ impl<'a> GPS<'a> {
             ControlFlow::Continue(())
         })
         .await;
+        defmt::println!("gps init done");
     }
 
     pub async fn with_messages<R>(&mut self, mut f: impl FnMut(Message) -> ControlFlow<R>) -> R {

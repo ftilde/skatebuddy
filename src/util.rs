@@ -31,8 +31,8 @@ impl<'a, T: embassy_nrf::spim::Instance, CS: OutputPin> embedded_hal_async::spi:
                 embedded_hal_async::spi::Operation::TransferInPlace(inout) => {
                     self.spi.transfer_in_place(inout).await
                 }
-                embedded_hal_async::spi::Operation::DelayUs(us) => {
-                    Timer::after(Duration::from_micros(*us as u64)).await;
+                embedded_hal_async::spi::Operation::DelayNs(us) => {
+                    Timer::after(Duration::from_nanos(*us as u64)).await;
                     Ok(())
                 }
             }

@@ -1,7 +1,5 @@
 #![no_main]
 #![no_std]
-#![feature(type_alias_impl_trait)]
-#![feature(async_fn_in_trait)]
 
 // Potentially useful in the future:
 //
@@ -65,7 +63,7 @@ bind_interrupts!(struct Irqs {
 async fn render_top_bar(
     lcd: &mut display::Display,
     bat: &battery::AsyncBattery,
-    bat_state: &battery::BatteryChargeState,
+    bat_state: &mut battery::BatteryChargeState,
 ) {
     let bw_config = lpm013m1126c::BWConfig {
         off: Rgb111::black(),
@@ -252,7 +250,7 @@ async fn display_stuff(ctx: &mut Context) -> App {
         //    .draw(&mut lcd)
         //    .unwrap();
 
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &ctx.bat_state).await;
+        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
 
         let now = ctx.start_time.elapsed();
 
@@ -487,7 +485,7 @@ async fn menu(ctx: &mut Context) -> App {
 
     'outer: loop {
         ctx.lcd.fill(Rgb111::black());
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &ctx.bat_state).await;
+        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
 
         for (btn, _) in &buttons {
             btn.render(&mut *ctx.lcd);

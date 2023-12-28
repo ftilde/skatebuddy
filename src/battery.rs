@@ -34,7 +34,7 @@ impl BatteryChargeState {
             charge_complete_pin,
         }
     }
-    pub fn read(&self) -> ChargeState {
+    pub fn read(&mut self) -> ChargeState {
         if self.charge_port_pin.is_low() {
             if self.charge_complete_pin.is_low() {
                 ChargeState::Charging
