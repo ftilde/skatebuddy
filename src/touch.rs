@@ -59,13 +59,20 @@ impl TouchRessources {
         Touch {
             hw: self,
             instance: i2c,
+            mode: Mode::Standby,
         }
     }
+}
+
+enum Mode {
+    Dynamic,
+    Standby,
 }
 
 pub struct Touch<'a> {
     hw: &'a mut TouchRessources,
     instance: &'a mut I2CInstance,
+    mode: Mode,
 }
 
 fn build_i2c<'a>(
@@ -89,7 +96,10 @@ impl<'a> Drop for Touch<'a> {
 
 impl<'a> Touch<'a> {
     pub async fn wait_for_event(&mut self) -> TouchEvent {
-        self.hw.irq.wait_for_low().await;
+        if let Mode::Standby = self.mode {
+            self.hw.irq.wait_for_low().await;
+        }
+        self.mode = Mode::Dynamic;
 
         let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
 
@@ -118,6 +128,7 @@ impl<'a> Touch<'a> {
         };
 
         if let EventKind::Release = kind {
+            self.mode = Mode::Standby;
             i2c.write(hw::ADDR, &CMD_STANDBY).await.unwrap();
         }
 
