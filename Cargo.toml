@@ -29,7 +29,7 @@ panic-probe = { version = "0.3.1", features=["print-defmt"] }
 bytemuck = { version="1.14.0", features=["derive"] }
 
 #embassy-executor = { version = "0.3.0", path = "../embassy/embassy-executor", features = [
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", features = [
+embassy-executor = { git = "https://github.com/ftilde/embassy.git", branch="skatebuddy", features = [
     "arch-cortex-m",
     "executor-thread",
     "executor-interrupt",
@@ -38,21 +38,21 @@ embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", features
     "task-arena-size-131072",
 ]}
 #embassy-time = { version = "0.1.2", path="../embassy/embassy-time", features = [
-embassy-time = { git = "https://github.com/embassy-rs/embassy.git", features = [
+embassy-time = { git = "https://github.com/ftilde/embassy.git", branch="skatebuddy", features = [
     "defmt",
     #"defmt-timestamp-uptime",
 ]}
 #embassy-nrf = { path = "../embassy/embassy-nrf", features = [
-embassy-nrf = { git = "https://github.com/embassy-rs/embassy.git", features = [
+embassy-nrf = { git = "https://github.com/ftilde/embassy.git", branch="skatebuddy", features = [
     "defmt",
     "nrf52840",
     "time-driver-rtc1",
     "gpiote",
 ]}
 #embassy-futures = { path = "../embassy/embassy-futures" }
-embassy-futures = { git = "https://github.com/embassy-rs/embassy.git"}
+embassy-futures = { git = "https://github.com/ftilde/embassy.git", branch="skatebuddy" }
 #embassy-sync = { path = "../embassy/embassy-sync" }
-embassy-sync = { git = "https://github.com/embassy-rs/embassy.git"}
+embassy-sync = { git = "https://github.com/ftilde/embassy.git", branch="skatebuddy" }
 embedded-hal-async = "1.0.0-rc.3"
 core2 = { version = "0.4.0", default-features = false }
 chrono = { version = "0.4.31", default-features = false }
