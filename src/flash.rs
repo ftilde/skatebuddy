@@ -69,11 +69,13 @@ impl FlashRessources {
         config.write_opcode = qspi::WriteOpcode::PP;
         config.write_page_size = qspi::WritePageSize::_256BYTES;
         config.deep_power_down = None; //TODO
-
-        //Higher freqs appear to be unstable. not sure why...
-        //Maybe it is related to RXDELAY which is 2 * 64Hz cycles by default...
-        config.frequency = qspi::Frequency::M16;
+                                       //
+        config.frequency = qspi::Frequency::M32;
+        //When running at 32MHz we also have to adjust the read-relay from 1/32Hz to 1/64Hz or
+        //things become glitchy...
+        config.rx_delay = 1;
         config.sck_delay = 1; // T_SHSL = min 20ns -> we choose 1 * 62.5ns here
+
         config.spi_mode = qspi::SpiMode::MODE0;
         config.address_mode = qspi::AddressMode::_24BIT;
         config.capacity = hw::SIZE as _;

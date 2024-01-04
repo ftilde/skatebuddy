@@ -252,7 +252,7 @@ dependencies = [
 [[package]]
 name = "embassy-embedded-hal"
 version = "0.1.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "defmt",
  "embassy-futures",
@@ -269,7 +269,7 @@ dependencies = [
 [[package]]
 name = "embassy-executor"
 version = "0.4.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -282,7 +282,7 @@ dependencies = [
 [[package]]
 name = "embassy-executor-macros"
 version = "0.4.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "darling",
  "proc-macro2",
@@ -293,12 +293,12 @@ dependencies = [
 [[package]]
 name = "embassy-futures"
 version = "0.1.1"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 
 [[package]]
 name = "embassy-hal-internal"
 version = "0.1.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "cortex-m",
  "critical-section",
@@ -309,7 +309,7 @@ dependencies = [
 [[package]]
 name = "embassy-nrf"
 version = "0.1.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "cfg-if",
  "cortex-m",
@@ -346,7 +346,7 @@ dependencies = [
 [[package]]
 name = "embassy-sync"
 version = "0.5.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -359,7 +359,7 @@ dependencies = [
 [[package]]
 name = "embassy-time"
 version = "0.2.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "cfg-if",
  "critical-section",
@@ -375,7 +375,7 @@ dependencies = [
 [[package]]
 name = "embassy-usb-driver"
 version = "0.1.0"
-source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#3916b26b258ae8216fedf0394257e39f23c53c19"
+source = "git+https://github.com/ftilde/embassy.git?branch=skatebuddy#f77d98fd9635bcdd98d6e406e3ecf46c3cdece57"
 dependencies = [
  "defmt",
 ]
