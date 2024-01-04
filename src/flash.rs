@@ -27,6 +27,7 @@ enum StatusReg {
 }
 
 pub struct FlashRessources {
+    spi: SPIInstance,
     cs: hw::CS,
     sck: hw::SCK,
     mosi: hw::MOSI,
@@ -37,7 +38,7 @@ pub struct FlashRessources {
 
 impl FlashRessources {
     pub async fn new(
-        spi: &mut SPIInstance,
+        spi: SPIInstance,
         cs: hw::CS,
         sck: hw::SCK,
         mosi: hw::MOSI,
@@ -46,6 +47,7 @@ impl FlashRessources {
         unused1: hw::UNUSED1,
     ) -> Self {
         let mut s = Self {
+            spi,
             cs,
             sck,
             mosi,
@@ -54,13 +56,13 @@ impl FlashRessources {
             unused1,
         };
         {
-            let _ = s.on(spi).await;
+            let _ = s.on().await;
             // Drop the handle and thus enter deep sleep
         }
         s
     }
 
-    pub async fn on<'a>(&'a mut self, spi: &'a mut SPIInstance) -> Flash<'a> {
+    pub async fn on<'a>(&'a mut self) -> Flash<'a> {
         let mut config = qspi::Config::default();
         config.xip_offset = 0;
         config.read_opcode = qspi::ReadOpcode::READ2IO;
@@ -77,7 +79,7 @@ impl FlashRessources {
         config.capacity = hw::SIZE as _;
 
         let mut qspi = qspi::Qspi::new(
-            spi,
+            &mut self.spi,
             crate::Irqs,
             &mut self.sck,
             &mut self.cs,
@@ -87,12 +89,6 @@ impl FlashRessources {
             &mut self.unused1,
             config,
         );
-
-        //let spim = crate::util::SpiDeviceWrapper {
-        //    spi: spim,
-        //    cs: &mut self.cs,
-        //    on: PinState::Low,
-        //};
 
         let mut s = Flash { qspi };
         s.wake_up_from_deep_sleep().await;

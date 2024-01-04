@@ -57,6 +57,7 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
 
 pub struct Display {
     buffer: lpm013m1126c::Buffer,
+    spi: SPI2,
     cs: Output<'static, hw::CS>,
     disp: Output<'static, hw::DISP>,
     sck: hw::SCK,
@@ -89,6 +90,7 @@ impl Display {
 
     pub async fn setup(
         spawner: &embassy_executor::Spawner,
+        spi: SPI2,
         cs: hw::CS,
         extcomin: hw::EXTCOMIN,
         disp: hw::DISP,
@@ -103,6 +105,7 @@ impl Display {
 
         let mut disp = Display {
             buffer: lpm013m1126c::Buffer::default(),
+            spi,
             cs,
             sck,
             mosi,
@@ -115,15 +118,20 @@ impl Display {
         disp
     }
 
-    async fn with_spi<'a, 'b: 'a, F: Future<Output = ()> + 'a>(
-        &'b mut self,
-        spi: &'a mut SPI2,
+    async fn with_spi<'a, F: Future<Output = ()> + 'a>(
+        &'a mut self,
         f: impl FnOnce(&'a mut Buffer, SpiDeviceWrapper<'a, SPI2, Output<'static, hw::CS>>) -> F,
     ) {
         let mut config = spim::Config::default();
         config.frequency = spim::Frequency::M2;
         config.mode = lpm013m1126c::SPI_MODE;
-        let spim = spim::Spim::new_txonly(spi, crate::Irqs, &mut self.sck, &mut self.mosi, config);
+        let spim = spim::Spim::new_txonly(
+            &mut self.spi,
+            crate::Irqs,
+            &mut self.sck,
+            &mut self.mosi,
+            config,
+        );
 
         let spi: SpiDeviceWrapper<'a, SPI2, Output<hw::CS>> = SpiDeviceWrapper {
             spi: spim,
@@ -134,22 +142,22 @@ impl Display {
         f(&mut self.buffer, spi).await
     }
 
-    pub async fn clear(&mut self, spi: &mut SPI2) {
-        self.with_spi(spi, |_buffer, mut spi| async move {
+    pub async fn clear(&mut self) {
+        self.with_spi(|_buffer, mut spi| async move {
             lpm013m1126c::clear(&mut spi).await;
         })
         .await;
     }
 
-    pub async fn blink(&mut self, spi: &mut SPI2, mode: lpm013m1126c::BlinkMode) {
-        self.with_spi(spi, |_buffer, mut spi| async move {
+    pub async fn blink(&mut self, mode: lpm013m1126c::BlinkMode) {
+        self.with_spi(|_buffer, mut spi| async move {
             lpm013m1126c::blink(&mut spi, mode).await;
         })
         .await;
     }
 
-    pub async fn present(&mut self, spi: &mut SPI2) {
-        self.with_spi(spi, |buffer, mut spi| async move {
+    pub async fn present(&mut self) {
+        self.with_spi(|buffer, mut spi| async move {
             buffer.present(&mut spi).await;
         })
         .await;

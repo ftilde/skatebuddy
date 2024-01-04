@@ -125,7 +125,6 @@ struct Context {
     //gps: gps::GPSRessources,
     lcd: display::Display,
     start_time: Instant,
-    spi: embassy_nrf::peripherals::SPI2,
     mag: mag::MagRessources,
     touch: touch::TouchRessources,
     twi0: TWISPI0,
@@ -133,7 +132,7 @@ struct Context {
 }
 
 async fn idle(ctx: &mut Context) -> App {
-    ctx.lcd.clear(&mut ctx.spi).await;
+    ctx.lcd.clear().await;
     ctx.lcd.off();
     ctx.backlight.off();
 
@@ -147,7 +146,7 @@ async fn touch_playground(ctx: &mut Context) -> App {
     ctx.backlight.on();
 
     ctx.lcd.fill(Rgb111::white());
-    ctx.lcd.present(&mut ctx.spi).await;
+    ctx.lcd.present().await;
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
@@ -177,18 +176,18 @@ async fn touch_playground(ctx: &mut Context) -> App {
 
                 prev_point = match e.kind {
                     touch::EventKind::Press => {
-                        ctx.lcd.blink(&mut ctx.spi, BlinkMode::Inverted).await;
+                        ctx.lcd.blink(BlinkMode::Inverted).await;
                         Some(point)
                     }
                     touch::EventKind::Release => {
-                        ctx.lcd.blink(&mut ctx.spi, BlinkMode::Normal).await;
+                        ctx.lcd.blink(BlinkMode::Normal).await;
                         None
                     }
                     touch::EventKind::Hold => Some(point),
                 };
             }
         }
-        ctx.lcd.present(&mut ctx.spi).await;
+        ctx.lcd.present().await;
 
         defmt::println!("we done presenting");
     };
@@ -303,7 +302,7 @@ async fn display_stuff(ctx: &mut Context) -> App {
             .draw(&mut ctx.lcd.binary(bw_config))
             .unwrap();
 
-        ctx.lcd.present(&mut ctx.spi).await;
+        ctx.lcd.present().await;
 
         match embassy_futures::select::select3(
             ticker.next(),
@@ -416,7 +415,7 @@ async fn clock(ctx: &mut Context) -> App {
                 .unwrap();
         }
 
-        ctx.lcd.present(&mut ctx.spi).await;
+        ctx.lcd.present().await;
 
         let next_wakeup = if let Some(now) = time::now_local() {
             use chrono::Timelike;
@@ -493,7 +492,7 @@ async fn menu(ctx: &mut Context) -> App {
         }
 
         let ((), evt) = embassy_futures::join::join(
-            ctx.lcd.present(&mut ctx.spi),
+            ctx.lcd.present(),
             embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_action()),
         )
         .await;
@@ -545,19 +544,12 @@ async fn main(spawner: Spawner) {
     //let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
     let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
 
-    let mut flash = flash::FlashRessources::new(
-        &mut p.QSPI,
-        p.P0_14,
-        p.P0_16,
-        p.P0_15,
-        p.P0_13,
-        p.P1_10,
-        p.P1_11,
-    )
-    .await;
+    let mut flash =
+        flash::FlashRessources::new(p.QSPI, p.P0_14, p.P0_16, p.P0_15, p.P0_13, p.P1_10, p.P1_11)
+            .await;
     {
         let addr = 0;
-        let mut f = flash.on(&mut p.QSPI).await;
+        let mut f = flash.on().await;
 
         let mut buf = [0xab; 4];
         f.read(addr, &mut buf).await;
@@ -583,7 +575,10 @@ async fn main(spawner: Spawner) {
 
     let button = button::Button::new(p.P0_17);
 
-    let lcd = display::Display::setup(&spawner, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27).await;
+    let lcd = display::Display::setup(
+        &spawner, p.SPI2, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
+    )
+    .await;
 
     let backlight = display::Backlight::new(p.P0_08);
 
@@ -612,7 +607,6 @@ async fn main(spawner: Spawner) {
         //gps,
         flash,
         lcd,
-        spi: p.SPI2,
         start_time: Instant::now(),
         mag,
         touch,
