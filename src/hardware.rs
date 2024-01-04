@@ -80,6 +80,9 @@ pub mod flash {
     pub type SCK = P0_16;
     pub type MOSI = P0_15;
     pub type MISO = P0_13;
+    pub type UNUSED0 = P1_10; //P42
+    pub type UNUSED1 = P1_11; //P43
+
     //pub type WP = ??;
     //pub type RST = ??;
     pub const SIZE: usize = 4096 * 2048; // 8MB

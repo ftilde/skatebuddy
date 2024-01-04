@@ -58,6 +58,7 @@ bind_interrupts!(struct Irqs {
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
     SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI1>;
     UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<gps::UartInstance>;
+    QSPI => embassy_nrf::qspi::InterruptHandler<embassy_nrf::peripherals::QSPI>;
 });
 
 async fn render_top_bar(
@@ -544,21 +545,37 @@ async fn main(spawner: Spawner) {
     //let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
     let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
 
-    let flash = flash::FlashRessources::new(&mut p.SPI2, p.P0_14, p.P0_16, p.P0_15, p.P0_13).await;
+    let mut flash = flash::FlashRessources::new(
+        &mut p.QSPI,
+        p.P0_14,
+        p.P0_16,
+        p.P0_15,
+        p.P0_13,
+        p.P1_10,
+        p.P1_11,
+    )
+    .await;
     {
-        //let addr = 0;
-        //let mut f = flash.on(&mut p.SPI2).await;
+        let addr = 0;
+        let mut f = flash.on(&mut p.QSPI).await;
 
-        //let mut buf = [0xab; 4];
-        //f.read(addr, &mut buf).await;
-        //defmt::println!("Got flash num: {:?}", buf);
+        let mut buf = [0xab; 4];
+        f.read(addr, &mut buf).await;
+        defmt::println!("Got flash num: {:?}", buf);
+
         //let u = u32::from_le_bytes(buf) + 1;
         //let buf = u.to_le_bytes();
         //defmt::println!("Trying to write: {:?}", buf);
 
-        //TODO: well, we will need to reset the page first...
+        //let now = Instant::now();
+        //f.erase(addr).await;
+        //let elapsed = now.elapsed().as_millis();
+        //defmt::println!("Done erasing {} ms", elapsed);
+
+        //let now = Instant::now();
         //f.write(addr, &buf).await;
-        //defmt::println!("Done");
+        //let elapsed = now.elapsed().as_millis();
+        //defmt::println!("Done writing {} ms", elapsed);
     }
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
