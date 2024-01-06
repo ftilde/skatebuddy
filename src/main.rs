@@ -221,86 +221,28 @@ fn hours_mins_secs(d: Duration) -> (u32, u32, u32) {
     (hours as _, min_clock as _, sec_clock as _)
 }
 
-async fn display_stuff(ctx: &mut Context) -> App {
+async fn battery_info(ctx: &mut Context) -> App {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
-    let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
-
-    let bw_config = lpm013m1126c::BWConfig {
-        off: Rgb111::black(),
-        on: Rgb111::white(),
-    };
+    let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
     ctx.lcd.on();
-    //ctx.backlight.off();
     loop {
         let mua = ctx.battery.current();
         let mdev = ctx.battery.current_std();
 
-        ctx.lcd.fill(bw_config.off);
-        //Circle::new(Point::new(5, i), 40)
-        //    .into_styled(
-        //        PrimitiveStyleBuilder::new()
-        //            .stroke_color(Rgb111::white())
-        //            .stroke_width(1)
-        //            .fill_color(Rgb111::blue())
-        //            .build(),
-        //    )
-        //    .draw(&mut lcd)
-        //    .unwrap();
+        ctx.lcd.fill(Rgb111::black());
 
         render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
 
-        let now = ctx.start_time.elapsed();
+        let mut w = TextWriter {
+            y: 20,
+            display: &mut ctx.lcd,
+        };
 
-        let (h, min, s) = hours_mins_secs(Duration::from_secs(now.as_secs()));
-
-        //let c = TOUCH_COUNTER.load(core::sync::atomic::Ordering::SeqCst);
-        //let mua = battery.current();
-        let text = arrform!(20, "c: {}muA", mua.micro_ampere());
-        Text::new(text.as_str(), Point::new(0, 20), style)
-            .draw(&mut ctx.lcd.binary(bw_config))
-            .unwrap();
-        let text = arrform!(20, "s: {}muA", mdev.micro_ampere());
-        Text::new(text.as_str(), Point::new(0, 40), style)
-            .draw(&mut ctx.lcd.binary(bw_config))
-            .unwrap();
-
-        let text = arrform!(20, "R: {}:{:0>2}:{:0>2}", h, min, s);
-        Text::new(text.as_str(), Point::new(0, 70), style)
-            .draw(&mut ctx.lcd.binary(bw_config))
-            .unwrap();
-
-        //let text = arrform!(
-        //    20,
-        //    "{} V: {}",
-        //    match ctx.bat_state.read() {
-        //        battery::ChargeState::Full => 'F',
-        //        battery::ChargeState::Charging => 'C',
-        //        battery::ChargeState::Draining => 'D',
-        //    },
-        //    v.voltage()
-        //);
-        //Text::new(text.as_str(), Point::new(0, 90), style)
-        //    .draw(&mut ctx.lcd.binary(bw_config))
-        //    .unwrap();
-        let text = arrform!(36, "N_F: {}", time::num_sync_fails());
-        Text::new(text.as_str(), Point::new(0, 105), style)
-            .draw(&mut ctx.lcd.binary(bw_config))
-            .unwrap();
-
-        let (h, min, s) = hours_mins_secs(time::time_since_last_sync());
-        let text = arrform!(36, "G: {}:{:0>2}:{:0>2}", h, min, s);
-        Text::new(text.as_str(), Point::new(0, 125), style)
-            .draw(&mut ctx.lcd.binary(bw_config))
-            .unwrap();
-
-        let (_h, min, s) = hours_mins_secs(time::last_sync_duration());
-        let text = arrform!(16, "T_G: {:0>2}:{:0>2}", min, s);
-        Text::new(text.as_str(), Point::new(0, 145), style)
-            .draw(&mut ctx.lcd.binary(bw_config))
-            .unwrap();
+        w.writeln(sl, arrform!(20, "c: {}muA", mua.micro_ampere()).as_str());
+        w.writeln(sl, arrform!(20, "s: {}muA", mdev.micro_ampere()).as_str());
 
         ctx.lcd.present().await;
 
@@ -326,10 +268,81 @@ async fn display_stuff(ctx: &mut Context) -> App {
     }
 }
 
+struct TextWriter<'a> {
+    y: u32,
+    display: &'a mut display::Display,
+}
+
+impl TextWriter<'_> {
+    fn writeln(&mut self, style: TextStyle, text: &str) {
+        let bw_config = lpm013m1126c::BWConfig {
+            off: Rgb111::black(),
+            on: Rgb111::white(),
+        };
+
+        Text::new(text, Point::new(0, self.y as _), style)
+            .draw(&mut self.display.binary(bw_config))
+            .unwrap();
+
+        self.y += style.font.height();
+    }
+}
+
+async fn clock_info(ctx: &mut Context) -> App {
+    let font = bitmap_font::tamzen::FONT_16x32_BOLD;
+    let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
+
+    let mut ticker = Ticker::every(Duration::from_secs(60));
+
+    ctx.lcd.on();
+    //ctx.backlight.off();
+    loop {
+        ctx.lcd.fill(Rgb111::black());
+        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
+
+        let now = ctx.start_time.elapsed();
+
+        let (h, min, s) = hours_mins_secs(Duration::from_secs(now.as_secs()));
+
+        let mut w = TextWriter {
+            y: 20,
+            display: &mut ctx.lcd,
+        };
+        w.writeln(sl, arrform!(20, "R: {}:{:0>2}:{:0>2}", h, min, s).as_str());
+
+        w.writeln(sl, arrform!(36, "N_F: {}", time::num_sync_fails()).as_str());
+
+        let (h, min, s) = hours_mins_secs(time::time_since_last_sync());
+        w.writeln(sl, arrform!(36, "G: {}:{:0>2}:{:0>2}", h, min, s).as_str());
+
+        let (_h, min, s) = hours_mins_secs(time::last_sync_duration());
+        w.writeln(sl, arrform!(16, "T_G: {:0>2}:{:0>2}", min, s).as_str());
+
+        ctx.lcd.present().await;
+
+        match embassy_futures::select::select3(
+            ticker.next(),
+            ctx.button.wait_for_press(),
+            DISPLAY_EVENT.wait(),
+        )
+        .await
+        {
+            embassy_futures::select::Either3::First(_) => {}
+            embassy_futures::select::Either3::Second(_d) => {
+                break App::Menu;
+            }
+            embassy_futures::select::Either3::Third(_event) => {
+                DISPLAY_EVENT.reset();
+            }
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 enum App {
     Draw,
-    Info,
+    ClockInfo,
+    BatInfo,
     Idle,
     Menu,
     Clock,
@@ -461,7 +474,8 @@ async fn menu(ctx: &mut Context) -> App {
 
     let options = [
         ("Draw", App::Draw),
-        ("Info", App::Info),
+        ("Clock", App::ClockInfo),
+        ("Bat", App::BatInfo),
         ("Idle", App::Idle),
     ];
 
@@ -650,7 +664,8 @@ async fn main(spawner: Spawner) {
     loop {
         state = match state {
             App::Draw => touch_playground(&mut ctx).await,
-            App::Info => display_stuff(&mut ctx).await,
+            App::ClockInfo => clock_info(&mut ctx).await,
+            App::BatInfo => battery_info(&mut ctx).await,
             App::Idle => idle(&mut ctx).await,
             App::Menu => menu(&mut ctx).await,
             App::Clock => clock(&mut ctx).await,
