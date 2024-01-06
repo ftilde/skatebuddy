@@ -318,6 +318,8 @@ async fn clock_info(ctx: &mut Context) -> App {
         let (_h, min, s) = hours_mins_secs(time::last_sync_duration());
         w.writeln(sl, arrform!(16, "T_G: {:0>2}:{:0>2}", min, s).as_str());
 
+        w.writeln(sl, arrform!(16, "Drift: {}", time::last_drift_s()).as_str());
+
         ctx.lcd.present().await;
 
         match embassy_futures::select::select3(

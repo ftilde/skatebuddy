@@ -104,7 +104,10 @@ fn set_utc_offset_from_dt(datetime: chrono::DateTime<chrono::Utc>) {
     let boot_seconds = boot_time.as_secs();
 
     let offset = unix_seconds - CONST_UTC_OFFSET_S - boot_seconds;
-    OFFSET_UTC_S.store(offset.try_into().unwrap(), Ordering::Relaxed);
+    let new_offset = offset.try_into().unwrap();
+    let prev_offset = OFFSET_UTC_S.load(Ordering::Acquire);
+    OFFSET_UTC_S.store(new_offset, Ordering::Release);
+    LAST_DRIFT_S.store(new_offset as i32 - prev_offset as i32, Ordering::Release);
 }
 
 static OFFSET_UTC_S: AtomicU32 = AtomicU32::new(0);
@@ -123,6 +126,10 @@ pub fn last_sync_duration() -> Duration {
 static NUM_SYNC_FAILS: AtomicU32 = AtomicU32::new(0);
 pub fn num_sync_fails() -> u32 {
     NUM_SYNC_FAILS.load(Ordering::Relaxed)
+}
+static LAST_DRIFT_S: AtomicI32 = AtomicI32::new(0);
+pub fn last_drift_s() -> i32 {
+    LAST_DRIFT_S.load(Ordering::Relaxed)
 }
 
 pub fn now_utc() -> Option<chrono::DateTime<chrono::Utc>> {
