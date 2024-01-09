@@ -6,6 +6,7 @@ use embassy_nrf::{
 use embassy_time::{Duration, Timer};
 use embedded_hal::digital::v2::PinState;
 use embedded_hal_async::spi::{Operation, SpiDevice};
+use littlefs2::fs::Filesystem;
 
 type SPIInstance = embassy_nrf::peripherals::QSPI;
 
@@ -69,7 +70,7 @@ impl FlashRessources {
         config.write_opcode = qspi::WriteOpcode::PP;
         config.write_page_size = qspi::WritePageSize::_256BYTES;
         config.deep_power_down = None; //TODO
-                                       //
+
         config.frequency = qspi::Frequency::M32;
         //When running at 32MHz we also have to adjust the read-relay from 1/32Hz to 1/64Hz or
         //things become glitchy...
@@ -95,6 +96,17 @@ impl FlashRessources {
         let mut s = Flash { qspi };
         s.wake_up_from_deep_sleep().await;
         s
+    }
+
+    pub async fn with_fs<'a, R>(
+        &mut self,
+        f: impl FnOnce(&mut Filesystem<Flash>) -> littlefs2::io::Result<R>,
+    ) -> littlefs2::io::Result<R> {
+        let mut flash = self.on().await;
+
+        let mut alloc = Filesystem::allocate();
+        let mut fs = Filesystem::mount(&mut alloc, &mut flash)?;
+        f(&mut fs)
     }
 }
 
@@ -178,12 +190,13 @@ impl<'a> Flash<'a> {
         if buf.is_empty() {
             return;
         }
+
         assert!(buf.len() <= WRITE_BLOCK_SIZE);
         let begin = addr as usize;
-        let end = begin + buf.len();
+        let last = begin + buf.len() - 1;
         let begin_block = begin / WRITE_BLOCK_SIZE;
-        let end_block = end / WRITE_BLOCK_SIZE;
-        assert_eq!(begin_block, end_block);
+        let last_block = last / WRITE_BLOCK_SIZE;
+        assert_eq!(begin_block, last_block);
 
         let reg = self.wait_idle().await;
         if !reg.wel() {
@@ -214,5 +227,40 @@ impl<'a> Drop for Flash<'a> {
         // sense to implement a separate blocking procedure here. We don't even expect this to take
         // very long.
         embassy_futures::block_on(self.enter_deep_sleep());
+    }
+}
+
+impl<'a> littlefs2::driver::Storage for Flash<'a> {
+    const READ_SIZE: usize = 4;
+
+    const WRITE_SIZE: usize = 4;
+
+    const BLOCK_SIZE: usize = SECTOR_SIZE;
+
+    const BLOCK_COUNT: usize = hw::SIZE / Self::BLOCK_SIZE;
+
+    type CACHE_SIZE = littlefs2::consts::U512;
+
+    type LOOKAHEAD_SIZE = littlefs2::consts::U128;
+
+    const BLOCK_CYCLES: isize = 50_000;
+
+    fn read(&mut self, off: usize, buf: &mut [u8]) -> littlefs2::io::Result<usize> {
+        embassy_futures::block_on(self.read(off as _, buf));
+        Ok(0)
+    }
+
+    fn write(&mut self, off: usize, data: &[u8]) -> littlefs2::io::Result<usize> {
+        embassy_futures::block_on(self.write(off as _, data));
+        Ok(0)
+    }
+
+    fn erase(&mut self, off: usize, len: usize) -> littlefs2::io::Result<usize> {
+        let mut i = 0;
+        while i < len {
+            embassy_futures::block_on(self.erase((off + i) as _));
+            i += SECTOR_SIZE;
+        }
+        Ok(0)
     }
 }

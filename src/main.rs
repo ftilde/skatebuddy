@@ -18,6 +18,7 @@ use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text;
 
 use defmt_rtt as _;
+use littlefs2::fs::Filesystem;
 use lpm013m1126c::BWConfig;
 //logger
 use nrf52840_hal as _; // memory layout
@@ -243,6 +244,23 @@ async fn battery_info(ctx: &mut Context) -> App {
 
         w.writeln(sl, arrform!(20, "c: {}muA", mua.micro_ampere()).as_str());
         w.writeln(sl, arrform!(20, "s: {}muA", mdev.micro_ampere()).as_str());
+
+        let boot_count = ctx
+            .flash
+            .with_fs(|fs| {
+                fs.open_file_and_then(&littlefs2::path::PathBuf::from(b"bootcount.bin"), |file| {
+                    let mut boot_count = 0;
+                    file.read(bytemuck::bytes_of_mut(&mut boot_count))?;
+                    Ok(boot_count)
+                })
+            })
+            .await;
+
+        if let Ok(boot_count) = boot_count {
+            w.writeln(sl, arrform!(20, "boot: {}", boot_count).as_str());
+        } else {
+            w.writeln(sl, "bootcount fail");
+        }
 
         ctx.lcd.present().await;
 
@@ -564,12 +582,44 @@ async fn main(spawner: Spawner) {
         flash::FlashRessources::new(p.QSPI, p.P0_14, p.P0_16, p.P0_15, p.P0_13, p.P1_10, p.P1_11)
             .await;
     {
-        let addr = 0;
-        let mut f = flash.on().await;
+        let mut alloc = Filesystem::allocate();
 
-        let mut buf = [0xab; 4];
-        f.read(addr, &mut buf).await;
-        defmt::println!("Got flash num: {:?}", buf);
+        let mut flash = flash.on().await;
+        let fs = match Filesystem::mount(&mut alloc, &mut flash) {
+            Ok(fs) => {
+                defmt::println!("Mounting existing fs",);
+                fs
+            }
+            Err(_e) => {
+                defmt::println!("Formatting fs because of mount error",);
+                Filesystem::format(&mut flash).unwrap();
+                Filesystem::mount(&mut alloc, &mut flash).unwrap()
+            }
+        };
+
+        let num_boots = fs
+            .open_file_with_options_and_then(
+                |options| options.read(true).write(true).create(true),
+                &littlefs2::path::PathBuf::from(b"bootcount.bin"),
+                |file| {
+                    let mut boot_num = 0u32;
+                    if file.len().unwrap() >= 4 {
+                        file.read(bytemuck::bytes_of_mut(&mut boot_num)).unwrap();
+                    };
+                    boot_num += 1;
+                    file.seek(littlefs2::io::SeekFrom::Start(0)).unwrap();
+                    file.write(bytemuck::bytes_of(&boot_num)).unwrap();
+                    Ok(boot_num)
+                },
+            )
+            .unwrap();
+        defmt::println!("This is boot nr {}", num_boots);
+
+        //let addr = 0;
+
+        //let mut buf = [0xab; 4];
+        //f.read(addr, &mut buf).await;
+        //defmt::println!("Got flash num: {:?}", buf);
 
         //let u = u32::from_le_bytes(buf) + 1;
         //let buf = u.to_le_bytes();
