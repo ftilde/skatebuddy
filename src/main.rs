@@ -17,6 +17,7 @@ use bitmap_font::TextStyle;
 use cortex_m::peripheral::SCB;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text;
+use micromath::F32Ext;
 
 use defmt_rtt as _;
 use littlefs2::fs::Filesystem;
@@ -484,12 +485,22 @@ async fn clock(ctx: &mut Context) -> App {
     }
 }
 
-async fn reset(ctx: &mut Context) -> ! {
-    ctx.lcd.clear().await;
-    SCB::sys_reset()
+async fn reset(ctx: &mut Context) -> App {
+    let options = [("Really Reset", true), ("Back", false)];
+
+    if menu(ctx, options, false).await {
+        ctx.lcd.clear().await;
+        SCB::sys_reset()
+    } else {
+        App::Menu
+    }
 }
 
-async fn menu(ctx: &mut Context) -> App {
+async fn menu<T: Copy, const N: usize>(
+    ctx: &mut Context,
+    options: [(&'static str, T); N],
+    button: T,
+) -> T {
     ctx.lcd.on();
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
@@ -499,20 +510,12 @@ async fn menu(ctx: &mut Context) -> App {
         font: &embedded_graphics::mono_font::ascii::FONT_10X20,
     };
 
-    let options = [
-        ("Draw", App::Draw),
-        ("Clock", App::ClockInfo),
-        ("Bat", App::BatInfo),
-        ("Idle", App::Idle),
-        ("Reset", App::Reset),
-    ];
-
     let mut i = 0i32;
-    let cols = 3i32;
+    let cols = (N as f32).sqrt().ceil() as i32;
     let y_offset = 16;
     let x_offset = y_offset / 2;
     let s = (crate::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
-    let mut buttons = options.map(|(text, app)| {
+    let mut buttons = options.map(|(text, opt)| {
         let x = i % cols;
         let y = i / cols;
         let btn = ui::Button::new(ui::ButtonDefinition {
@@ -522,7 +525,7 @@ async fn menu(ctx: &mut Context) -> App {
             text,
         });
         i += 1;
-        (btn, app)
+        (btn, opt)
     });
 
     'outer: loop {
@@ -540,7 +543,7 @@ async fn menu(ctx: &mut Context) -> App {
         .await;
 
         match evt {
-            embassy_futures::select::Either::First(_) => break 'outer App::Clock,
+            embassy_futures::select::Either::First(_) => break 'outer button,
             embassy_futures::select::Either::Second(e) => {
                 defmt::println!("BTN: {:?}", e);
                 for (btn, app) in &mut buttons {
@@ -551,6 +554,18 @@ async fn menu(ctx: &mut Context) -> App {
             }
         }
     }
+}
+
+async fn app_menu(ctx: &mut Context) -> App {
+    let options = [
+        ("Draw", App::Draw),
+        ("Clock", App::ClockInfo),
+        ("Bat", App::BatInfo),
+        ("Idle", App::Idle),
+        ("Reset", App::Reset),
+    ];
+
+    menu(ctx, options, App::Clock).await
 }
 
 #[embassy_executor::main]
@@ -727,7 +742,7 @@ async fn main(spawner: Spawner) {
             App::ClockInfo => clock_info(&mut ctx).await,
             App::BatInfo => battery_info(&mut ctx).await,
             App::Idle => idle(&mut ctx).await,
-            App::Menu => menu(&mut ctx).await,
+            App::Menu => app_menu(&mut ctx).await,
             App::Clock => clock(&mut ctx).await,
             App::Reset => reset(&mut ctx).await,
         }
