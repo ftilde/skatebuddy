@@ -14,6 +14,7 @@
 
 use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;
+use cortex_m::peripheral::SCB;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text;
 
@@ -366,6 +367,7 @@ enum App {
     Idle,
     Menu,
     Clock,
+    Reset,
 }
 
 fn draw_centered(
@@ -482,6 +484,11 @@ async fn clock(ctx: &mut Context) -> App {
     }
 }
 
+async fn reset(ctx: &mut Context) -> ! {
+    ctx.lcd.clear().await;
+    SCB::sys_reset()
+}
+
 async fn menu(ctx: &mut Context) -> App {
     ctx.lcd.on();
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
@@ -497,10 +504,11 @@ async fn menu(ctx: &mut Context) -> App {
         ("Clock", App::ClockInfo),
         ("Bat", App::BatInfo),
         ("Idle", App::Idle),
+        ("Reset", App::Reset),
     ];
 
     let mut i = 0i32;
-    let cols = 2i32;
+    let cols = 3i32;
     let y_offset = 16;
     let x_offset = y_offset / 2;
     let s = (crate::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
@@ -721,6 +729,7 @@ async fn main(spawner: Spawner) {
             App::Idle => idle(&mut ctx).await,
             App::Menu => menu(&mut ctx).await,
             App::Clock => clock(&mut ctx).await,
+            App::Reset => reset(&mut ctx).await,
         }
     }
 }
