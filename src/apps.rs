@@ -1,3 +1,4 @@
+pub mod accel;
 pub mod batinfo;
 pub mod clockinfo;
 pub mod draw;

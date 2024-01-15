@@ -42,7 +42,7 @@ use embassy_nrf::{
     peripherals::{TWISPI0, TWISPI1},
     saadc, spim, twim,
 };
-use embassy_time::{Duration, Instant, Ticker, Timer};
+use embassy_time::{Duration, Instant, Timer};
 
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
@@ -119,6 +119,7 @@ struct Context {
     start_time: Instant,
     mag: drivers::mag::MagRessources,
     touch: drivers::touch::TouchRessources,
+    accel: drivers::accel::AccelRessources,
     twi0: TWISPI0,
     twi1: TWISPI1,
 }
@@ -266,6 +267,7 @@ async fn app_menu(ctx: &mut Context) {
         BatInfo,
         Idle,
         Reset,
+        Accel,
     }
 
     let options = [
@@ -274,6 +276,7 @@ async fn app_menu(ctx: &mut Context) {
         ("Bat", Some(App::BatInfo)),
         ("Idle", Some(App::Idle)),
         ("Reset", Some(App::Reset)),
+        ("Accel", Some(App::Accel)),
     ];
 
     loop {
@@ -283,6 +286,7 @@ async fn app_menu(ctx: &mut Context) {
                 App::ClockInfo => apps::clockinfo::clock_info(ctx).await,
                 App::BatInfo => apps::batinfo::battery_info(ctx).await,
                 App::Idle => apps::idle::idle(ctx).await,
+                App::Accel => apps::accel::accel(ctx).await,
                 App::Reset => reset(ctx).await,
             }
         } else {
@@ -391,6 +395,7 @@ async fn main(spawner: Spawner) {
     .await;
 
     let mag = drivers::mag::MagRessources::new(p.P1_12, p.P1_13);
+    let accel = drivers::accel::AccelRessources::new(p.P1_06, p.P1_05);
 
     let mut ctx = Context {
         backlight,
@@ -403,6 +408,7 @@ async fn main(spawner: Spawner) {
         start_time: Instant::now(),
         mag,
         touch,
+        accel,
         twi0: p.TWISPI0,
         twi1: p.TWISPI1,
     };
@@ -411,30 +417,6 @@ async fn main(spawner: Spawner) {
         let mut mag = ctx.mag.on(&mut ctx.twi1).await;
         let r = mag.read().await;
         defmt::println!("mag: {:?}", r);
-    }
-
-    {
-        let mut accel = drivers::accel::AccelRessources::new(p.P1_06, p.P1_05);
-
-        let config = drivers::accel::Config::new();
-        let mut accel = accel.on(&mut ctx.twi1, config).await;
-
-        let mut ticker = Ticker::every(Duration::from_secs(1));
-        for _ in 0..1 {
-            let reading = accel.reading_nf().await;
-            let reading_hf = accel.reading_hf().await;
-
-            defmt::println!(
-                "Accel: x: {}, y: {}, z: {}, xh: {}, yh: {}, zh: {}",
-                reading.x,
-                reading.y,
-                reading.z,
-                reading_hf.x,
-                reading_hf.y,
-                reading_hf.z
-            );
-            ticker.next().await;
-        }
     }
 
     spawner.spawn(time::clock_sync_task(gps)).unwrap();
