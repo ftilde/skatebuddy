@@ -1,4 +1,4 @@
-use crate::hardware::mag as hw;
+use super::hardware::mag as hw;
 use embassy_nrf::twim;
 use embassy_time::{Duration, Timer};
 

@@ -12,6 +12,11 @@
 // Plots
 // https://crates.io/crates/embedded-plots
 
+mod drivers;
+mod time;
+mod ui;
+mod util;
+
 use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;
 use cortex_m::peripheral::SCB;
@@ -20,8 +25,8 @@ use embedded_graphics::text::Text;
 use micromath::F32Ext;
 
 use defmt_rtt as _;
+use drivers::lpm013m1126c::BWConfig;
 use littlefs2::fs::Filesystem;
-use lpm013m1126c::BWConfig;
 //logger
 use nrf52840_hal as _; // memory layout
 use panic_probe as _;
@@ -29,22 +34,7 @@ use ui::ButtonStyle; //panic handler
 
 //use nrf52840_hal::{gpio::Level, prelude::*};
 
-use crate::lpm013m1126c::{BlinkMode, Rgb111};
-
-mod accel;
-mod battery;
-mod button;
-mod display;
-#[allow(unused)]
-mod flash;
-mod gps;
-mod hardware;
-mod lpm013m1126c;
-mod mag;
-mod time;
-mod touch;
-mod ui;
-mod util;
+use drivers::lpm013m1126c::{BlinkMode, Rgb111};
 
 use embassy_executor::Spawner;
 use embassy_nrf::{
@@ -60,16 +50,16 @@ bind_interrupts!(struct Irqs {
     SPIM2_SPIS2_SPI2 => spim::InterruptHandler<embassy_nrf::peripherals::SPI2>;
     SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI0>;
     SPIM1_SPIS1_TWIM1_TWIS1_SPI1_TWI1 => twim::InterruptHandler<embassy_nrf::peripherals::TWISPI1>;
-    UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<gps::UartInstance>;
+    UARTE0_UART0 => embassy_nrf::buffered_uarte::InterruptHandler<drivers::gps::UartInstance>;
     QSPI => embassy_nrf::qspi::InterruptHandler<embassy_nrf::peripherals::QSPI>;
 });
 
 async fn render_top_bar(
-    lcd: &mut display::Display,
-    bat: &battery::AsyncBattery,
-    bat_state: &mut battery::BatteryChargeState,
+    lcd: &mut drivers::display::Display,
+    bat: &drivers::battery::AsyncBattery,
+    bat_state: &mut drivers::battery::BatteryChargeState,
 ) {
-    let bw_config = lpm013m1126c::BWConfig {
+    let bw_config = BWConfig {
         off: Rgb111::black(),
         on: Rgb111::white(),
     };
@@ -99,9 +89,9 @@ async fn render_top_bar(
         4,
         "{}{:0>2}",
         match bat_state.read() {
-            battery::ChargeState::Full => 'F',
-            battery::ChargeState::Charging => 'C',
-            battery::ChargeState::Draining => 'D',
+            drivers::battery::ChargeState::Full => 'F',
+            drivers::battery::ChargeState::Charging => 'C',
+            drivers::battery::ChargeState::Draining => 'D',
         },
         v.percentage() as i32
     );
@@ -119,17 +109,17 @@ async fn render_top_bar(
 
 struct Context {
     #[allow(unused)]
-    flash: flash::FlashRessources,
-    bat_state: battery::BatteryChargeState,
-    battery: battery::AsyncBattery,
-    button: button::Button,
-    backlight: display::Backlight,
+    flash: drivers::flash::FlashRessources,
+    bat_state: drivers::battery::BatteryChargeState,
+    battery: drivers::battery::AsyncBattery,
+    button: drivers::button::Button,
+    backlight: drivers::display::Backlight,
     #[allow(unused)]
     //gps: gps::GPSRessources,
-    lcd: display::Display,
+    lcd: drivers::display::Display,
     start_time: Instant,
-    mag: mag::MagRessources,
-    touch: touch::TouchRessources,
+    mag: drivers::mag::MagRessources,
+    touch: drivers::touch::TouchRessources,
     twi0: TWISPI0,
     twi1: TWISPI1,
 }
@@ -178,15 +168,15 @@ async fn touch_playground(ctx: &mut Context) -> App {
                 }
 
                 prev_point = match e.kind {
-                    touch::EventKind::Press => {
+                    drivers::touch::EventKind::Press => {
                         ctx.lcd.blink(BlinkMode::Inverted).await;
                         Some(point)
                     }
-                    touch::EventKind::Release => {
+                    drivers::touch::EventKind::Release => {
                         ctx.lcd.blink(BlinkMode::Normal).await;
                         None
                     }
-                    touch::EventKind::Hold => Some(point),
+                    drivers::touch::EventKind::Hold => Some(point),
                 };
             }
         }
@@ -290,12 +280,12 @@ async fn battery_info(ctx: &mut Context) -> App {
 
 struct TextWriter<'a> {
     y: u32,
-    display: &'a mut display::Display,
+    display: &'a mut drivers::display::Display,
 }
 
 impl TextWriter<'_> {
     fn writeln(&mut self, style: TextStyle, text: &str) {
-        let bw_config = lpm013m1126c::BWConfig {
+        let bw_config = BWConfig {
             off: Rgb111::black(),
             on: Rgb111::white(),
         };
@@ -383,7 +373,7 @@ fn draw_centered(
 
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
-    let x = (lpm013m1126c::WIDTH - text_len * font.width() as usize) / 2;
+    let x = (drivers::lpm013m1126c::WIDTH - text_len * font.width() as usize) / 2;
     Text::new(text, Point::new(x as i32, y), style)
         .draw(&mut ctx.lcd.binary(bw_config))
         .unwrap();
@@ -393,7 +383,7 @@ async fn clock(ctx: &mut Context) -> App {
     let large_font = bitmap_font::tamzen::FONT_16x32_BOLD.pixel_double();
     let small_font = bitmap_font::tamzen::FONT_16x32_BOLD;
 
-    let bw_config = lpm013m1126c::BWConfig {
+    let bw_config = BWConfig {
         off: Rgb111::black(),
         on: Rgb111::white(),
     };
@@ -427,9 +417,9 @@ async fn clock(ctx: &mut Context) -> App {
                 "{: >3}%{}",
                 perc,
                 match ctx.bat_state.read() {
-                    battery::ChargeState::Full => 'F',
-                    battery::ChargeState::Charging => 'C',
-                    battery::ChargeState::Draining => 'D',
+                    drivers::battery::ChargeState::Full => 'F',
+                    drivers::battery::ChargeState::Charging => 'C',
+                    drivers::battery::ChargeState::Draining => 'D',
                 },
             );
             let col = if perc > 95 {
@@ -440,12 +430,12 @@ async fn clock(ctx: &mut Context) -> App {
                 Rgb111::red()
             };
 
-            let bw_config = lpm013m1126c::BWConfig {
+            let bw_config = BWConfig {
                 off: Rgb111::black(),
                 on: col,
             };
 
-            let x = lpm013m1126c::WIDTH - bat.as_str().len() * tiny_font.width() as usize;
+            let x = drivers::lpm013m1126c::WIDTH - bat.as_str().len() * tiny_font.width() as usize;
             Text::new(bat.as_str(), Point::new(x as _, 0), tiny_style)
                 .draw(&mut ctx.lcd.binary(bw_config))
                 .unwrap();
@@ -514,7 +504,7 @@ async fn menu<T: Copy, const N: usize>(
     let cols = (N as f32).sqrt().ceil() as i32;
     let y_offset = 16;
     let x_offset = y_offset / 2;
-    let s = (crate::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
+    let s = (drivers::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
     let mut buttons = options.map(|(text, opt)| {
         let x = i % cols;
         let y = i / cols;
@@ -583,8 +573,8 @@ async fn main(spawner: Spawner) {
 
     //dump_peripheral_regs();
 
-    let battery = battery::Battery::new(p.SAADC, p.P0_03);
-    let battery = battery::AsyncBattery::new(&spawner, battery);
+    let battery = drivers::battery::Battery::new(p.SAADC, p.P0_03);
+    let battery = drivers::battery::AsyncBattery::new(&spawner, battery);
 
     // Keep hrm in reset to power it off
     let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
@@ -601,9 +591,10 @@ async fn main(spawner: Spawner) {
     //let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
     let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
 
-    let mut flash =
-        flash::FlashRessources::new(p.QSPI, p.P0_14, p.P0_16, p.P0_15, p.P0_13, p.P1_10, p.P1_11)
-            .await;
+    let mut flash = drivers::flash::FlashRessources::new(
+        p.QSPI, p.P0_14, p.P0_16, p.P0_15, p.P0_13, p.P1_10, p.P1_11,
+    )
+    .await;
     {
         let mut alloc = Filesystem::allocate();
 
@@ -660,21 +651,22 @@ async fn main(spawner: Spawner) {
     }
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
-    let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
+    let bat_state = drivers::battery::BatteryChargeState::new(p.P0_23, p.P0_25);
 
-    let button = button::Button::new(p.P0_17);
+    let button = drivers::button::Button::new(p.P0_17);
 
-    let lcd = display::Display::setup(
+    let lcd = drivers::display::Display::setup(
         &spawner, p.SPI2, p.P0_05, p.P0_06, p.P0_07, p.P0_26, p.P0_27,
     )
     .await;
 
-    let backlight = display::Backlight::new(p.P0_08);
+    let backlight = drivers::display::Backlight::new(p.P0_08);
 
     let touch =
-        touch::TouchRessources::new(p.P1_01, p.P1_02, p.P1_03, p.P1_04, &mut p.TWISPI0).await;
+        drivers::touch::TouchRessources::new(p.P1_01, p.P1_02, p.P1_03, p.P1_04, &mut p.TWISPI0)
+            .await;
 
-    let gps = gps::GPSRessources::new(
+    let gps = drivers::gps::GPSRessources::new(
         p.P0_29,
         p.P0_31,
         p.P0_30,
@@ -686,7 +678,7 @@ async fn main(spawner: Spawner) {
     )
     .await;
 
-    let mag = mag::MagRessources::new(p.P1_12, p.P1_13);
+    let mag = drivers::mag::MagRessources::new(p.P1_12, p.P1_13);
 
     let mut ctx = Context {
         backlight,
@@ -710,9 +702,9 @@ async fn main(spawner: Spawner) {
     }
 
     {
-        let mut accel = crate::accel::AccelRessources::new(p.P1_06, p.P1_05);
+        let mut accel = drivers::accel::AccelRessources::new(p.P1_06, p.P1_05);
 
-        let config = accel::Config::new();
+        let config = drivers::accel::Config::new();
         let mut accel = accel.on(&mut ctx.twi1, config).await;
 
         let mut ticker = Ticker::every(Duration::from_secs(1));

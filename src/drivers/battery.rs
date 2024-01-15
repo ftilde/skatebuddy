@@ -1,6 +1,6 @@
 use core::sync::atomic::{AtomicU32, Ordering};
 
-use crate::hardware::bat as hw;
+use super::hardware::bat as hw;
 use embassy_nrf::{
     gpio::{Input, Pull},
     peripherals::SAADC,

@@ -1,4 +1,4 @@
-use crate::hardware::touch as hw;
+use super::hardware::touch as hw;
 use embassy_nrf::{
     gpio::{Input, Level, Output, OutputDrive, Pull},
     twim,

@@ -1,7 +1,7 @@
 use embassy_nrf::gpio::{Input, Level, Pull};
 use embassy_time::{Duration, Instant, Timer};
 
-use crate::hardware::btn as hw;
+use super::hardware::btn as hw;
 
 const DEBOUNCE_TIME: Duration = Duration::from_millis(10);
 pub const PRESSED: Level = Level::Low;

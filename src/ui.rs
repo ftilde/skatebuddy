@@ -5,7 +5,7 @@ use embedded_graphics::{
 };
 use embedded_text::{alignment::HorizontalAlignment, style::TextBoxStyleBuilder, TextBox};
 
-use crate::touch::{EventKind, TouchEvent};
+use crate::drivers::touch::{EventKind, TouchEvent};
 
 pub struct ButtonStyle<'a, C> {
     pub fill: C,

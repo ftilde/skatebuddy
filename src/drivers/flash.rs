@@ -1,11 +1,6 @@
-use crate::hardware::flash as hw;
-use embassy_nrf::{
-    gpio::{Level, Output, OutputDrive},
-    qspi,
-};
+use super::hardware::flash as hw;
+use embassy_nrf::qspi;
 use embassy_time::{Duration, Timer};
-use embedded_hal::digital::v2::PinState;
-use embedded_hal_async::spi::{Operation, SpiDevice};
 use littlefs2::fs::Filesystem;
 
 type SPIInstance = embassy_nrf::peripherals::QSPI;
@@ -81,7 +76,7 @@ impl FlashRessources {
         config.address_mode = qspi::AddressMode::_24BIT;
         config.capacity = hw::SIZE as _;
 
-        let mut qspi = qspi::Qspi::new(
+        let qspi = qspi::Qspi::new(
             &mut self.spi,
             crate::Irqs,
             &mut self.sck,
@@ -147,7 +142,8 @@ impl<'a> Flash<'a> {
         let mut out = 0;
         self.qspi
             .custom_instruction(cmd, &[], core::slice::from_mut(&mut out))
-            .await;
+            .await
+            .unwrap();
         Reg1(out)
     }
     async fn write_enable(&mut self) {
@@ -160,7 +156,7 @@ impl<'a> Flash<'a> {
 
     pub async fn read(&mut self, addr: u32 /*actually 24 bit*/, out: &mut [u8]) {
         self.wait_idle().await;
-        self.qspi.read(addr, out).await;
+        self.qspi.read(addr, out).await.unwrap();
     }
 
     pub async fn wait_idle(&mut self) -> Reg1 {
@@ -203,8 +199,7 @@ impl<'a> Flash<'a> {
             self.write_enable().await;
         }
 
-        let mut cmd = addr.to_be_bytes();
-        self.qspi.write(addr, buf).await;
+        self.qspi.write(addr, buf).await.unwrap();
 
         self.wait_idle().await;
     }
@@ -215,7 +210,7 @@ impl<'a> Flash<'a> {
             self.write_enable().await;
         }
 
-        self.qspi.erase(addr).await;
+        self.qspi.erase(addr).await.unwrap();
 
         self.wait_idle().await;
     }

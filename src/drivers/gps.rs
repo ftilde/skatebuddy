@@ -12,7 +12,7 @@ use embedded_io_async::Read;
 use arrform::{arrform, ArrForm};
 use embassy_time::{Duration, Timer};
 
-use crate::hardware::gps as hw;
+use super::hardware::gps as hw;
 
 pub type UartInstance = UARTE0;
 pub type TimerInstance = TIMER1;

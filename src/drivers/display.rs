@@ -1,6 +1,7 @@
 use core::future::Future;
 
-use crate::{hardware::lcd as hw, lpm013m1126c::Buffer, util::SpiDeviceWrapper};
+use super::{hardware::lcd as hw, lpm013m1126c::Buffer};
+use crate::util::SpiDeviceWrapper;
 use embassy_nrf::{
     gpio::{Level, Output, OutputDrive},
     peripherals::SPI2,
@@ -9,7 +10,7 @@ use embassy_nrf::{
 use embassy_time::{Duration, Timer};
 use embedded_hal::digital::v2::PinState;
 
-use crate::lpm013m1126c;
+use super::lpm013m1126c;
 
 enum ExcominCmd {
     Run(u64),

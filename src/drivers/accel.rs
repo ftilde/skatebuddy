@@ -1,4 +1,4 @@
-use crate::hardware::accel as hw;
+use super::hardware::accel as hw;
 use embassy_nrf::twim;
 
 use bitvec::prelude::*;
