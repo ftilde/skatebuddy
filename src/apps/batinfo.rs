@@ -3,10 +3,10 @@ use core::fmt::Write;
 use embassy_time::{Duration, Ticker};
 
 use crate::{
-    drivers::lpm013m1126c::Rgb111, render_top_bar, ui::TextWriter, App, Context, DISPLAY_EVENT,
+    drivers::lpm013m1126c::Rgb111, render_top_bar, ui::TextWriter, Context, DISPLAY_EVENT,
 };
 
-pub async fn battery_info(ctx: &mut Context) -> App {
+pub async fn battery_info(ctx: &mut Context) {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
@@ -57,7 +57,7 @@ pub async fn battery_info(ctx: &mut Context) -> App {
                 if d > Duration::from_secs(1) {
                     ctx.battery.reset().await;
                 } else {
-                    break App::Menu;
+                    break;
                 }
             }
             embassy_futures::select::Either3::Third(_event) => {

@@ -7,10 +7,10 @@ use crate::{
     render_top_bar,
     time::{self, hours_mins_secs},
     ui::TextWriter,
-    App, Context, DISPLAY_EVENT,
+    Context, DISPLAY_EVENT,
 };
 
-pub async fn clock_info(ctx: &mut Context) -> App {
+pub async fn clock_info(ctx: &mut Context) {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
@@ -50,7 +50,7 @@ pub async fn clock_info(ctx: &mut Context) -> App {
         {
             embassy_futures::select::Either3::First(_) => {}
             embassy_futures::select::Either3::Second(_d) => {
-                break App::Menu;
+                break;
             }
             embassy_futures::select::Either3::Third(_event) => {
                 DISPLAY_EVENT.reset();

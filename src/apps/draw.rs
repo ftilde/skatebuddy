@@ -1,10 +1,10 @@
-use crate::{App, Context};
+use crate::Context;
 
 use crate::drivers::lpm013m1126c::{BlinkMode, Rgb111};
 use crate::drivers::touch::EventKind;
 use embedded_graphics::prelude::*;
 
-pub async fn touch_playground(ctx: &mut Context) -> App {
+pub async fn touch_playground(ctx: &mut Context) {
     ctx.lcd.on();
     ctx.backlight.on();
 
@@ -20,7 +20,7 @@ pub async fn touch_playground(ctx: &mut Context) -> App {
             .await
         {
             embassy_futures::select::Either::First(_) => {
-                break App::Menu;
+                break;
             }
             embassy_futures::select::Either::Second(e) => {
                 defmt::println!("Touch: {:?}", e);

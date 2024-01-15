@@ -136,17 +136,6 @@ pub fn signal_display_event(event: DisplayEvent) {
     DISPLAY_EVENT.signal(event);
 }
 
-#[derive(Copy, Clone)]
-enum App {
-    Draw,
-    ClockInfo,
-    BatInfo,
-    Idle,
-    Menu,
-    Clock,
-    Reset,
-}
-
 fn draw_centered(
     ctx: &mut Context,
     text: &str,
@@ -165,7 +154,7 @@ fn draw_centered(
         .unwrap();
 }
 
-async fn clock(ctx: &mut Context) -> App {
+async fn clock(ctx: &mut Context) {
     let large_font = bitmap_font::tamzen::FONT_16x32_BOLD.pixel_double();
     let small_font = bitmap_font::tamzen::FONT_16x32_BOLD;
 
@@ -251,7 +240,7 @@ async fn clock(ctx: &mut Context) -> App {
                 if d > Duration::from_secs(1) {
                     ctx.battery.reset().await;
                 } else {
-                    break App::Menu;
+                    break;
                 }
             }
             embassy_futures::select::Either3::Third(_event) => {
@@ -261,27 +250,46 @@ async fn clock(ctx: &mut Context) -> App {
     }
 }
 
-async fn reset(ctx: &mut Context) -> App {
+async fn reset(ctx: &mut Context) {
     let options = [("Really Reset", true), ("Back", false)];
 
     if apps::menu::grid_menu(ctx, options, false).await {
         ctx.lcd.clear().await;
         SCB::sys_reset()
-    } else {
-        App::Menu
     }
 }
 
-async fn app_menu(ctx: &mut Context) -> App {
+async fn app_menu(ctx: &mut Context) {
+    #[derive(Copy, Clone)]
+    enum App {
+        Draw,
+        ClockInfo,
+        BatInfo,
+        Idle,
+        Reset,
+    }
+
     let options = [
-        ("Draw", App::Draw),
-        ("Clock", App::ClockInfo),
-        ("Bat", App::BatInfo),
-        ("Idle", App::Idle),
-        ("Reset", App::Reset),
+        ("Draw", Some(App::Draw)),
+        ("Clock", Some(App::ClockInfo)),
+        ("Bat", Some(App::BatInfo)),
+        ("Idle", Some(App::Idle)),
+        ("Reset", Some(App::Reset)),
     ];
 
-    apps::menu::grid_menu(ctx, options, App::Clock).await
+    loop {
+        if let Some(app) = apps::menu::grid_menu(ctx, options, None).await {
+            match app {
+                App::Draw => apps::draw::touch_playground(ctx).await,
+                App::ClockInfo => apps::clockinfo::clock_info(ctx).await,
+                App::BatInfo => apps::batinfo::battery_info(ctx).await,
+                App::Idle => apps::idle::idle(ctx).await,
+                App::Reset => reset(ctx).await,
+            }
+        } else {
+            break;
+        }
+    }
 }
 
 #[embassy_executor::main]
@@ -453,16 +461,8 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(time::clock_sync_task(gps)).unwrap();
 
-    let mut state = App::Clock;
     loop {
-        state = match state {
-            App::Draw => apps::draw::touch_playground(&mut ctx).await,
-            App::ClockInfo => apps::clockinfo::clock_info(&mut ctx).await,
-            App::BatInfo => apps::batinfo::battery_info(&mut ctx).await,
-            App::Idle => apps::idle::idle(&mut ctx).await,
-            App::Menu => app_menu(&mut ctx).await,
-            App::Clock => clock(&mut ctx).await,
-            App::Reset => reset(&mut ctx).await,
-        }
+        clock(&mut ctx).await;
+        app_menu(&mut ctx).await;
     }
 }
