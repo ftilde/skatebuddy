@@ -164,7 +164,6 @@ async fn clock(ctx: &mut Context) {
     };
 
     ctx.lcd.on();
-    //ctx.backlight.off();
     loop {
         ctx.lcd.fill(bw_config.off);
 
@@ -322,7 +321,6 @@ async fn main(spawner: Spawner) {
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
 
-    //let _flash_cs = Output::new(p.P0_14, Level::High, OutputDrive::Standard);
     let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
 
     let mut flash = drivers::flash::FlashRessources::new(
@@ -362,26 +360,6 @@ async fn main(spawner: Spawner) {
             )
             .unwrap();
         defmt::println!("This is boot nr {}", num_boots);
-
-        //let addr = 0;
-
-        //let mut buf = [0xab; 4];
-        //f.read(addr, &mut buf).await;
-        //defmt::println!("Got flash num: {:?}", buf);
-
-        //let u = u32::from_le_bytes(buf) + 1;
-        //let buf = u.to_le_bytes();
-        //defmt::println!("Trying to write: {:?}", buf);
-
-        //let now = Instant::now();
-        //f.erase(addr).await;
-        //let elapsed = now.elapsed().as_millis();
-        //defmt::println!("Done erasing {} ms", elapsed);
-
-        //let now = Instant::now();
-        //f.write(addr, &buf).await;
-        //let elapsed = now.elapsed().as_millis();
-        //defmt::println!("Done writing {} ms", elapsed);
     }
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
