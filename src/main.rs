@@ -12,6 +12,7 @@
 // Plots
 // https://crates.io/crates/embedded-plots
 
+mod apps;
 mod drivers;
 mod time;
 mod ui;
@@ -22,7 +23,6 @@ use bitmap_font::TextStyle;
 use cortex_m::peripheral::SCB;
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text;
-use micromath::F32Ext;
 
 use defmt_rtt as _;
 use drivers::lpm013m1126c::BWConfig;
@@ -30,11 +30,10 @@ use littlefs2::fs::Filesystem;
 //logger
 use nrf52840_hal as _; // memory layout
 use panic_probe as _;
-use ui::ButtonStyle; //panic handler
 
 //use nrf52840_hal::{gpio::Level, prelude::*};
 
-use drivers::lpm013m1126c::{BlinkMode, Rgb111};
+use drivers::lpm013m1126c::Rgb111;
 
 use embassy_executor::Spawner;
 use embassy_nrf::{
@@ -124,72 +123,6 @@ struct Context {
     twi1: TWISPI1,
 }
 
-async fn idle(ctx: &mut Context) -> App {
-    ctx.lcd.clear().await;
-    ctx.lcd.off();
-    ctx.backlight.off();
-
-    ctx.button.wait_for_press().await;
-
-    App::Menu
-}
-
-async fn touch_playground(ctx: &mut Context) -> App {
-    ctx.lcd.on();
-    ctx.backlight.on();
-
-    ctx.lcd.fill(Rgb111::white());
-    ctx.lcd.present().await;
-
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
-
-    //ctx.backlight.off();
-    let mut prev_point = None;
-    let next = loop {
-        match embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event())
-            .await
-        {
-            embassy_futures::select::Either::First(_) => {
-                break App::Menu;
-            }
-            embassy_futures::select::Either::Second(e) => {
-                defmt::println!("Touch: {:?}", e);
-
-                let point = Point::new(e.x.into(), e.y.into());
-                if let Some(pp) = prev_point {
-                    embedded_graphics::primitives::Line::new(point, pp)
-                        .into_styled(embedded_graphics::primitives::PrimitiveStyle::with_stroke(
-                            Rgb111::black(),
-                            3,
-                        ))
-                        .draw(&mut *ctx.lcd)
-                        .unwrap();
-                    defmt::println!("Draw from {}:{} to {}:{}", point.x, point.y, pp.x, pp.y);
-                }
-
-                prev_point = match e.kind {
-                    drivers::touch::EventKind::Press => {
-                        ctx.lcd.blink(BlinkMode::Inverted).await;
-                        Some(point)
-                    }
-                    drivers::touch::EventKind::Release => {
-                        ctx.lcd.blink(BlinkMode::Normal).await;
-                        None
-                    }
-                    drivers::touch::EventKind::Hold => Some(point),
-                };
-            }
-        }
-        ctx.lcd.present().await;
-
-        defmt::println!("we done presenting");
-    };
-
-    ctx.backlight.off();
-
-    next
-}
-
 pub enum DisplayEvent {
     NewBatData,
 }
@@ -201,153 +134,6 @@ static DISPLAY_EVENT: embassy_sync::signal::Signal<
 
 pub fn signal_display_event(event: DisplayEvent) {
     DISPLAY_EVENT.signal(event);
-}
-
-fn hours_mins_secs(d: Duration) -> (u32, u32, u32) {
-    let seconds = d.as_secs();
-
-    let sec_clock = seconds % 60;
-    let minutes = seconds / 60;
-    let min_clock = minutes % 60;
-    let hours = minutes / 60;
-
-    (hours as _, min_clock as _, sec_clock as _)
-}
-
-async fn battery_info(ctx: &mut Context) -> App {
-    let font = bitmap_font::tamzen::FONT_16x32_BOLD;
-    let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
-
-    let mut ticker = Ticker::every(Duration::from_secs(60));
-
-    ctx.lcd.on();
-    loop {
-        let mua = ctx.battery.current();
-        let mdev = ctx.battery.current_std();
-
-        ctx.lcd.fill(Rgb111::black());
-
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
-
-        let mut w = TextWriter {
-            y: 20,
-            display: &mut ctx.lcd,
-        };
-
-        w.writeln(sl, arrform!(20, "c: {}muA", mua.micro_ampere()).as_str());
-        w.writeln(sl, arrform!(20, "s: {}muA", mdev.micro_ampere()).as_str());
-
-        let boot_count = ctx
-            .flash
-            .with_fs(|fs| {
-                fs.open_file_and_then(&littlefs2::path::PathBuf::from(b"bootcount.bin"), |file| {
-                    let mut boot_count = 0;
-                    file.read(bytemuck::bytes_of_mut(&mut boot_count))?;
-                    Ok(boot_count)
-                })
-            })
-            .await;
-
-        if let Ok(boot_count) = boot_count {
-            w.writeln(sl, arrform!(20, "boot: {}", boot_count).as_str());
-        } else {
-            w.writeln(sl, "bootcount fail");
-        }
-
-        ctx.lcd.present().await;
-
-        match embassy_futures::select::select3(
-            ticker.next(),
-            ctx.button.wait_for_press(),
-            DISPLAY_EVENT.wait(),
-        )
-        .await
-        {
-            embassy_futures::select::Either3::First(_) => {}
-            embassy_futures::select::Either3::Second(d) => {
-                if d > Duration::from_secs(1) {
-                    ctx.battery.reset().await;
-                } else {
-                    break App::Menu;
-                }
-            }
-            embassy_futures::select::Either3::Third(_event) => {
-                DISPLAY_EVENT.reset();
-            }
-        }
-    }
-}
-
-struct TextWriter<'a> {
-    y: u32,
-    display: &'a mut drivers::display::Display,
-}
-
-impl TextWriter<'_> {
-    fn writeln(&mut self, style: TextStyle, text: &str) {
-        let bw_config = BWConfig {
-            off: Rgb111::black(),
-            on: Rgb111::white(),
-        };
-
-        Text::new(text, Point::new(0, self.y as _), style)
-            .draw(&mut self.display.binary(bw_config))
-            .unwrap();
-
-        self.y += style.font.height();
-    }
-}
-
-async fn clock_info(ctx: &mut Context) -> App {
-    let font = bitmap_font::tamzen::FONT_16x32_BOLD;
-    let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
-
-    let mut ticker = Ticker::every(Duration::from_secs(60));
-
-    ctx.lcd.on();
-    //ctx.backlight.off();
-    loop {
-        ctx.lcd.fill(Rgb111::black());
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
-
-        let now = ctx.start_time.elapsed();
-
-        let (h, min, s) = hours_mins_secs(Duration::from_secs(now.as_secs()));
-
-        let mut w = TextWriter {
-            y: 20,
-            display: &mut ctx.lcd,
-        };
-        w.writeln(sl, arrform!(20, "R: {}:{:0>2}:{:0>2}", h, min, s).as_str());
-
-        w.writeln(sl, arrform!(36, "N_F: {}", time::num_sync_fails()).as_str());
-
-        let (h, min, s) = hours_mins_secs(time::time_since_last_sync());
-        w.writeln(sl, arrform!(36, "G: {}:{:0>2}:{:0>2}", h, min, s).as_str());
-
-        let (_h, min, s) = hours_mins_secs(time::last_sync_duration());
-        w.writeln(sl, arrform!(16, "T_G: {:0>2}:{:0>2}", min, s).as_str());
-
-        w.writeln(sl, arrform!(16, "Drift: {}", time::last_drift_s()).as_str());
-
-        ctx.lcd.present().await;
-
-        match embassy_futures::select::select3(
-            ticker.next(),
-            ctx.button.wait_for_press(),
-            DISPLAY_EVENT.wait(),
-        )
-        .await
-        {
-            embassy_futures::select::Either3::First(_) => {}
-            embassy_futures::select::Either3::Second(_d) => {
-                break App::Menu;
-            }
-            embassy_futures::select::Either3::Third(_event) => {
-                DISPLAY_EVENT.reset();
-            }
-        }
-    }
 }
 
 #[derive(Copy, Clone)]
@@ -478,71 +264,11 @@ async fn clock(ctx: &mut Context) -> App {
 async fn reset(ctx: &mut Context) -> App {
     let options = [("Really Reset", true), ("Back", false)];
 
-    if menu(ctx, options, false).await {
+    if apps::menu::grid_menu(ctx, options, false).await {
         ctx.lcd.clear().await;
         SCB::sys_reset()
     } else {
         App::Menu
-    }
-}
-
-async fn menu<T: Copy, const N: usize>(
-    ctx: &mut Context,
-    options: [(&'static str, T); N],
-    button: T,
-) -> T {
-    ctx.lcd.on();
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
-
-    let button_style = ButtonStyle {
-        fill: Rgb111::blue(),
-        highlight: Rgb111::white(),
-        font: &embedded_graphics::mono_font::ascii::FONT_10X20,
-    };
-
-    let mut i = 0i32;
-    let cols = (N as f32).sqrt().ceil() as i32;
-    let y_offset = 16;
-    let x_offset = y_offset / 2;
-    let s = (drivers::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
-    let mut buttons = options.map(|(text, opt)| {
-        let x = i % cols;
-        let y = i / cols;
-        let btn = ui::Button::new(ui::ButtonDefinition {
-            position: Point::new(x * s + x_offset, y * s + y_offset),
-            size: Size::new(s as _, s as _),
-            style: &button_style,
-            text,
-        });
-        i += 1;
-        (btn, opt)
-    });
-
-    'outer: loop {
-        ctx.lcd.fill(Rgb111::black());
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
-
-        for (btn, _) in &buttons {
-            btn.render(&mut *ctx.lcd);
-        }
-
-        let ((), evt) = embassy_futures::join::join(
-            ctx.lcd.present(),
-            embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_action()),
-        )
-        .await;
-
-        match evt {
-            embassy_futures::select::Either::First(_) => break 'outer button,
-            embassy_futures::select::Either::Second(e) => {
-                defmt::println!("BTN: {:?}", e);
-                for (btn, app) in &mut buttons {
-                    if btn.clicked(&e) {
-                        break 'outer *app;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -555,7 +281,7 @@ async fn app_menu(ctx: &mut Context) -> App {
         ("Reset", App::Reset),
     ];
 
-    menu(ctx, options, App::Clock).await
+    apps::menu::grid_menu(ctx, options, App::Clock).await
 }
 
 #[embassy_executor::main]
@@ -730,10 +456,10 @@ async fn main(spawner: Spawner) {
     let mut state = App::Clock;
     loop {
         state = match state {
-            App::Draw => touch_playground(&mut ctx).await,
-            App::ClockInfo => clock_info(&mut ctx).await,
-            App::BatInfo => battery_info(&mut ctx).await,
-            App::Idle => idle(&mut ctx).await,
+            App::Draw => apps::draw::touch_playground(&mut ctx).await,
+            App::ClockInfo => apps::clockinfo::clock_info(&mut ctx).await,
+            App::BatInfo => apps::batinfo::battery_info(&mut ctx).await,
+            App::Idle => apps::idle::idle(&mut ctx).await,
             App::Menu => app_menu(&mut ctx).await,
             App::Clock => clock(&mut ctx).await,
             App::Reset => reset(&mut ctx).await,

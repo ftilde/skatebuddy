@@ -1,11 +1,16 @@
+use bitmap_font::TextStyle;
 use embedded_graphics::{
     mono_font::{MonoFont, MonoTextStyle},
     prelude::*,
     primitives::Rectangle,
+    text::Text,
 };
 use embedded_text::{alignment::HorizontalAlignment, style::TextBoxStyleBuilder, TextBox};
 
-use crate::drivers::touch::{EventKind, TouchEvent};
+use crate::drivers::{
+    lpm013m1126c::{BWConfig, Rgb111},
+    touch::{EventKind, TouchEvent},
+};
 
 pub struct ButtonStyle<'a, C> {
     pub fill: C,
@@ -95,5 +100,25 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
             self.state = ButtonState::Up;
         }
         false
+    }
+}
+
+pub struct TextWriter<'a> {
+    pub y: u32,
+    pub display: &'a mut crate::drivers::display::Display,
+}
+
+impl TextWriter<'_> {
+    pub fn writeln(&mut self, style: TextStyle, text: &str) {
+        let bw_config = BWConfig {
+            off: Rgb111::black(),
+            on: Rgb111::white(),
+        };
+
+        Text::new(text, Point::new(0, self.y as _), style)
+            .draw(&mut self.display.binary(bw_config))
+            .unwrap();
+
+        self.y += style.font.height();
     }
 }
