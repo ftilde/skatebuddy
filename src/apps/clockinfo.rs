@@ -1,5 +1,5 @@
-use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;
+use core::fmt::Write;
 use embassy_time::{Duration, Ticker};
 
 use crate::{
@@ -26,21 +26,18 @@ pub async fn clock_info(ctx: &mut Context) -> App {
 
         let (h, min, s) = hours_mins_secs(Duration::from_secs(now.as_secs()));
 
-        let mut w = TextWriter {
-            y: 20,
-            display: &mut ctx.lcd,
-        };
-        w.writeln(sl, arrform!(20, "R: {}:{:0>2}:{:0>2}", h, min, s).as_str());
+        let mut w = TextWriter::new(&mut ctx.lcd, sl).y(20);
 
-        w.writeln(sl, arrform!(36, "N_F: {}", time::num_sync_fails()).as_str());
+        let _ = writeln!(w, "R: {}:{:0>2}:{:0>2}", h, min, s);
+        let _ = writeln!(w, "N_F: {}", time::num_sync_fails());
 
         let (h, min, s) = hours_mins_secs(time::time_since_last_sync());
-        w.writeln(sl, arrform!(36, "G: {}:{:0>2}:{:0>2}", h, min, s).as_str());
+        let _ = writeln!(w, "G: {}:{:0>2}:{:0>2}", h, min, s);
 
         let (_h, min, s) = hours_mins_secs(time::last_sync_duration());
-        w.writeln(sl, arrform!(16, "T_G: {:0>2}:{:0>2}", min, s).as_str());
+        let _ = writeln!(w, "T_G: {:0>2}:{:0>2}", min, s);
 
-        w.writeln(sl, arrform!(16, "Drift: {}", time::last_drift_s()).as_str());
+        let _ = writeln!(w, "Drift: {}", time::last_drift_s());
 
         ctx.lcd.present().await;
 

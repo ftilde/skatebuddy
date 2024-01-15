@@ -104,21 +104,45 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
 }
 
 pub struct TextWriter<'a> {
-    pub y: u32,
-    pub display: &'a mut crate::drivers::display::Display,
+    pos: Point,
+    display: &'a mut crate::drivers::display::Display,
+    style: TextStyle<'a>,
 }
 
-impl TextWriter<'_> {
-    pub fn writeln(&mut self, style: TextStyle, text: &str) {
+impl<'a> TextWriter<'a> {
+    pub fn new(display: &'a mut crate::drivers::display::Display, style: TextStyle<'a>) -> Self {
+        Self {
+            pos: Point::new(0, 0),
+            display,
+            style,
+        }
+    }
+
+    //pub fn x(mut self, x: i32) -> Self {
+    //    self.pos.x = x;
+    //    self
+    //}
+
+    pub fn y(mut self, y: i32) -> Self {
+        self.pos.y = y;
+        self
+    }
+
+    pub fn write(&mut self, text: &str) {
         let bw_config = BWConfig {
             off: Rgb111::black(),
             on: Rgb111::white(),
         };
 
-        Text::new(text, Point::new(0, self.y as _), style)
+        self.pos = Text::new(text, self.pos, self.style)
             .draw(&mut self.display.binary(bw_config))
             .unwrap();
+    }
+}
 
-        self.y += style.font.height();
+impl core::fmt::Write for TextWriter<'_> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.write(s);
+        Ok(())
     }
 }

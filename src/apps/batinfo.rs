@@ -1,5 +1,5 @@
-use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;
+use core::fmt::Write;
 use embassy_time::{Duration, Ticker};
 
 use crate::{
@@ -21,13 +21,10 @@ pub async fn battery_info(ctx: &mut Context) -> App {
 
         render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
 
-        let mut w = TextWriter {
-            y: 20,
-            display: &mut ctx.lcd,
-        };
+        let mut w = TextWriter::new(&mut ctx.lcd, sl).y(20);
 
-        w.writeln(sl, arrform!(20, "c: {}muA", mua.micro_ampere()).as_str());
-        w.writeln(sl, arrform!(20, "s: {}muA", mdev.micro_ampere()).as_str());
+        let _ = writeln!(w, "c: {}muA", mua.micro_ampere());
+        let _ = writeln!(w, "s: {}muA", mdev.micro_ampere());
 
         let boot_count = ctx
             .flash
@@ -41,9 +38,9 @@ pub async fn battery_info(ctx: &mut Context) -> App {
             .await;
 
         if let Ok(boot_count) = boot_count {
-            w.writeln(sl, arrform!(20, "boot: {}", boot_count).as_str());
+            let _ = writeln!(w, "boot: {}", boot_count);
         } else {
-            w.writeln(sl, "bootcount fail");
+            w.write("bootcount fail\n");
         }
 
         ctx.lcd.present().await;
