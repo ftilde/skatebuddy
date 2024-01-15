@@ -105,6 +105,7 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
 
 pub struct TextWriter<'a> {
     pos: Point,
+    line_start: i32,
     display: &'a mut crate::drivers::display::Display,
     style: TextStyle<'a>,
 }
@@ -113,6 +114,7 @@ impl<'a> TextWriter<'a> {
     pub fn new(display: &'a mut crate::drivers::display::Display, style: TextStyle<'a>) -> Self {
         Self {
             pos: Point::new(0, 0),
+            line_start: 0,
             display,
             style,
         }
@@ -120,6 +122,7 @@ impl<'a> TextWriter<'a> {
 
     //pub fn x(mut self, x: i32) -> Self {
     //    self.pos.x = x;
+    //    self.line_start = x;
     //    self
     //}
 
@@ -134,9 +137,15 @@ impl<'a> TextWriter<'a> {
             on: Rgb111::white(),
         };
 
-        self.pos = Text::new(text, self.pos, self.style)
+        let mut new_pos = Text::new(text, self.pos, self.style)
             .draw(&mut self.display.binary(bw_config))
             .unwrap();
+
+        if new_pos.y != self.pos.y {
+            // We encountered a newline character
+            new_pos.x = self.line_start;
+        }
+        self.pos = new_pos;
     }
 }
 
