@@ -23,7 +23,8 @@ use embedded_graphics::text::Text;
 
 use drivers_hw::lpm013m1126c::{BWConfig, Rgb111};
 
-use embassy_time::{Duration, Timer};
+use drivers_hw::futures::select;
+use drivers_hw::time::{Duration, Timer};
 
 async fn render_top_bar(
     lcd: &mut drivers_hw::display::Display,
@@ -170,22 +171,22 @@ async fn clock(ctx: &mut Context) {
             Timer::after(Duration::from_secs(60))
         };
 
-        match embassy_futures::select::select3(
+        match select::select3(
             next_wakeup,
             ctx.button.wait_for_press(),
             drivers_hw::wait_display_event(),
         )
         .await
         {
-            embassy_futures::select::Either3::First(_) => {}
-            embassy_futures::select::Either3::Second(d) => {
+            select::Either3::First(_) => {}
+            select::Either3::Second(d) => {
                 if d > Duration::from_secs(1) {
                     ctx.battery.reset().await;
                 } else {
                     break;
                 }
             }
-            embassy_futures::select::Either3::Third(_event) => {}
+            select::Either3::Third(_event) => {}
         }
     }
 }

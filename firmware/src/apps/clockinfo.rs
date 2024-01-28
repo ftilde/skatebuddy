@@ -1,7 +1,8 @@
 use bitmap_font::TextStyle;
 use core::fmt::Write;
+use drivers_hw::futures::select;
 use drivers_hw::lpm013m1126c::Rgb111;
-use embassy_time::{Duration, Ticker};
+use drivers_hw::time::{Duration, Ticker};
 
 use crate::{
     render_top_bar,
@@ -41,18 +42,18 @@ pub async fn clock_info(ctx: &mut Context) {
 
         ctx.lcd.present().await;
 
-        match embassy_futures::select::select3(
+        match select::select3(
             ticker.next(),
             ctx.button.wait_for_press(),
             drivers_hw::wait_display_event(),
         )
         .await
         {
-            embassy_futures::select::Either3::First(_) => {}
-            embassy_futures::select::Either3::Second(_d) => {
+            select::Either3::First(_) => {}
+            select::Either3::Second(_d) => {
                 break;
             }
-            embassy_futures::select::Either3::Third(_event) => {}
+            select::Either3::Third(_event) => {}
         }
     }
 }

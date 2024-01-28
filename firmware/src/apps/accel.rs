@@ -1,7 +1,8 @@
 use bitmap_font::TextStyle;
 use core::fmt::Write;
+use drivers_hw::futures::select;
 use drivers_hw::lpm013m1126c::Rgb111;
-use embassy_time::{Duration, Ticker};
+use drivers_hw::time::{Duration, Ticker};
 
 use crate::{render_top_bar, ui::TextWriter, Context};
 
@@ -29,9 +30,9 @@ pub async fn accel(ctx: &mut Context) {
 
         ctx.lcd.present().await;
 
-        match embassy_futures::select::select(ticker.next(), ctx.button.wait_for_press()).await {
-            embassy_futures::select::Either::First(_) => {}
-            embassy_futures::select::Either::Second(_d) => {
+        match select::select(ticker.next(), ctx.button.wait_for_press()).await {
+            select::Either::First(_) => {}
+            select::Either::Second(_d) => {
                 break;
             }
         }

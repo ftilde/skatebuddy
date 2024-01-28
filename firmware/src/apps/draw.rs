@@ -1,5 +1,6 @@
 use crate::Context;
 
+use drivers_hw::futures::select;
 use drivers_hw::lpm013m1126c::{BlinkMode, Rgb111};
 use drivers_hw::touch::EventKind;
 use embedded_graphics::prelude::*;
@@ -16,13 +17,11 @@ pub async fn touch_playground(ctx: &mut Context) {
     //ctx.backlight.off();
     let mut prev_point = None;
     let next = loop {
-        match embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_event())
-            .await
-        {
-            embassy_futures::select::Either::First(_) => {
+        match select::select(ctx.button.wait_for_press(), touch.wait_for_event()).await {
+            select::Either::First(_) => {
                 break;
             }
-            embassy_futures::select::Either::Second(e) => {
+            select::Either::Second(e) => {
                 defmt::println!("Touch: {:?}", e);
 
                 let point = Point::new(e.x.into(), e.y.into());

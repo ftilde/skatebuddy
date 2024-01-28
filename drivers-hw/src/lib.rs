@@ -28,6 +28,10 @@ pub mod touch;
 
 mod util;
 
+pub mod futures {
+    pub use embassy_futures::*;
+}
+
 bind_interrupts!(struct Irqs {
     SAADC => saadc::InterruptHandler;
     SPIM2_SPIS2_SPI2 => spim::InterruptHandler<embassy_nrf::peripherals::SPI2>;

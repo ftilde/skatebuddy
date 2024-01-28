@@ -1,4 +1,5 @@
 use crate::{render_top_bar, ui::ButtonStyle, Context};
+use drivers_hw::futures::{join, select};
 use drivers_hw::lpm013m1126c::Rgb111;
 use embedded_graphics::prelude::{Point, Size};
 use micromath::F32Ext;
@@ -43,15 +44,15 @@ pub async fn grid_menu<T: Copy, const N: usize>(
             btn.render(&mut *ctx.lcd);
         }
 
-        let ((), evt) = embassy_futures::join::join(
+        let ((), evt) = join::join(
             ctx.lcd.present(),
-            embassy_futures::select::select(ctx.button.wait_for_press(), touch.wait_for_action()),
+            select::select(ctx.button.wait_for_press(), touch.wait_for_action()),
         )
         .await;
 
         match evt {
-            embassy_futures::select::Either::First(_) => break 'outer button,
-            embassy_futures::select::Either::Second(e) => {
+            select::Either::First(_) => break 'outer button,
+            select::Either::Second(e) => {
                 defmt::println!("BTN: {:?}", e);
                 for (btn, app) in &mut buttons {
                     if btn.clicked(&e) {

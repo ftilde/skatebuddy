@@ -3,12 +3,12 @@ use core::{
     sync::atomic::{AtomicI32, AtomicU32, Ordering},
 };
 
-use embassy_time::{Duration, Instant, Timer};
-
 use crate::gps;
 
+pub use embassy_time::*;
+
 #[embassy_executor::task]
-pub async fn clock_sync_task(mut gps: gps::GPSRessources) {
+pub(crate) async fn clock_sync_task(mut gps: gps::GPSRessources) {
     const INITIAL_SYNC_TIME: Duration = Duration::from_secs(2 * 60);
     const INCREMENTAL_SYNC_TIME: Duration = Duration::from_secs(1 * 60);
 
