@@ -8,6 +8,11 @@ use embassy_nrf::{
 };
 use embassy_time::Instant;
 use littlefs2::fs::Filesystem;
+use static_cell::StaticCell;
+
+use defmt_rtt as _; //logger
+use nrf52840_hal as _; // memory layout
+use panic_probe as _; //panic handler
 
 pub mod accel;
 pub mod battery;
@@ -70,7 +75,7 @@ pub struct Context {
 
 pub type Spawner = embassy_executor::Spawner;
 
-pub async fn init(spawner: Spawner) -> Context {
+async fn init(spawner: Spawner) -> Context {
     let mut conf = embassy_nrf::config::Config::default();
     conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
     conf.dcdc.reg1 = true;
@@ -186,4 +191,41 @@ pub async fn init(spawner: Spawner) -> Context {
         twi0: p.TWISPI0,
         twi1: p.TWISPI1,
     }
+}
+
+pub fn sys_reset() -> ! {
+    cortex_m::peripheral::SCB::sys_reset()
+}
+
+pub enum Never {}
+
+pub trait Main: 'static {
+    fn build(self, context: Context) -> impl core::future::Future<Output = Never> + 'static;
+}
+
+impl<F: core::future::Future<Output = Never> + 'static, C: FnOnce(Context) -> F + 'static> Main
+    for C
+{
+    fn build(self, context: Context) -> impl core::future::Future<Output = Never> + 'static {
+        self(context)
+    }
+}
+
+#[embassy_executor::task]
+pub async fn main_task(main: impl Main) {
+    let spawner = embassy_executor::Spawner::for_current_executor().await;
+    let ctx = init(spawner).await;
+    let future = main.build(ctx);
+    let _ = future.await;
+}
+
+static EXECUTOR: StaticCell<embassy_executor::Executor> = StaticCell::new();
+
+pub fn run(main: impl Main) -> ! {
+    let executor = EXECUTOR.init(embassy_executor::Executor::new());
+
+    executor.run(|spawner| {
+        // Here we get access to a spawner to spawn the initial tasks.
+        defmt::unwrap!(spawner.spawn(main_task(main)));
+    });
 }

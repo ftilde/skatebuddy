@@ -17,20 +17,12 @@ mod ui;
 
 use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;
-use cortex_m::peripheral::SCB;
 use drivers_hw::{time, Context};
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text;
 
-use defmt_rtt as _;
 use drivers_hw::lpm013m1126c::{BWConfig, Rgb111};
-//logger
-use nrf52840_hal as _; // memory layout
-use panic_probe as _;
 
-//use nrf52840_hal::{gpio::Level, prelude::*};
-
-use embassy_executor::Spawner;
 use embassy_time::{Duration, Timer};
 
 async fn render_top_bar(
@@ -203,7 +195,7 @@ async fn reset(ctx: &mut Context) {
 
     if apps::menu::grid_menu(ctx, options, false).await {
         ctx.lcd.clear().await;
-        SCB::sys_reset()
+        drivers_hw::sys_reset();
     }
 }
 
@@ -243,12 +235,12 @@ async fn app_menu(ctx: &mut Context) {
     }
 }
 
-#[embassy_executor::main]
-async fn main(spawner: Spawner) {
-    let mut ctx = drivers_hw::init(spawner).await;
-
-    loop {
-        clock(&mut ctx).await;
-        app_menu(&mut ctx).await;
-    }
+#[cortex_m_rt::entry]
+fn main() -> ! {
+    drivers_hw::run(|mut ctx| async move {
+        loop {
+            clock(&mut ctx).await;
+            app_menu(&mut ctx).await;
+        }
+    });
 }

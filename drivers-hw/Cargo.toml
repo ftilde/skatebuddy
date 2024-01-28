@@ -52,3 +52,4 @@ embedded-text = "0.7.0"
 littlefs2 = "0.4.0"
 micromath = "2.1.0"
 util = {path = "../util"}
+static_cell = "2.0.0"
