@@ -1,7 +1,7 @@
 use crate::Context;
 
-use crate::drivers::lpm013m1126c::{BlinkMode, Rgb111};
-use crate::drivers::touch::EventKind;
+use drivers_hw::lpm013m1126c::{BlinkMode, Rgb111};
+use drivers_hw::touch::EventKind;
 use embedded_graphics::prelude::*;
 
 pub async fn touch_playground(ctx: &mut Context) {

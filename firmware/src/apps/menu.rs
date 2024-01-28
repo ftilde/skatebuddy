@@ -1,4 +1,5 @@
-use crate::{drivers::lpm013m1126c::Rgb111, render_top_bar, ui::ButtonStyle, Context};
+use crate::{render_top_bar, ui::ButtonStyle, Context};
+use drivers_hw::lpm013m1126c::Rgb111;
 use embedded_graphics::prelude::{Point, Size};
 use micromath::F32Ext;
 
@@ -20,7 +21,7 @@ pub async fn grid_menu<T: Copy, const N: usize>(
     let cols = (N as f32).sqrt().ceil() as i32;
     let y_offset = 16;
     let x_offset = y_offset / 2;
-    let s = (crate::drivers::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
+    let s = (drivers_hw::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
     let mut buttons = options.map(|(text, opt)| {
         let x = i % cols;
         let y = i / cols;

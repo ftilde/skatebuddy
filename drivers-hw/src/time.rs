@@ -5,7 +5,7 @@ use core::{
 
 use embassy_time::{Duration, Instant, Timer};
 
-use crate::drivers::gps;
+use crate::gps;
 
 #[embassy_executor::task]
 pub async fn clock_sync_task(mut gps: gps::GPSRessources) {

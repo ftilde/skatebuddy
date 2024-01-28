@@ -1,11 +1,11 @@
 PROJECT_NAME=skatebuddy
-ELF=target/thumbv7em-none-eabihf/release/skatebuddy
+ELF=firmware/target/thumbv7em-none-eabihf/release/skatebuddy
 DISABLE_DEBUG_SCRIPT=./disable_debug_interface.sh
 
 all: ${ELF}
 
 ${ELF}:
-	cargo build --release
+	pushd firmware; cargo build --release; popd
 
 .PHONY: flash ${ELF}
 

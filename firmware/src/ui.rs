@@ -7,7 +7,7 @@ use embedded_graphics::{
 };
 use embedded_text::{alignment::HorizontalAlignment, style::TextBoxStyleBuilder, TextBox};
 
-use crate::drivers::{
+use drivers_hw::{
     lpm013m1126c::{BWConfig, Rgb111},
     touch::{EventKind, TouchEvent},
 };
@@ -106,12 +106,12 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
 pub struct TextWriter<'a> {
     pos: Point,
     line_start: i32,
-    display: &'a mut crate::drivers::display::Display,
+    display: &'a mut drivers_hw::display::Display,
     style: TextStyle<'a>,
 }
 
 impl<'a> TextWriter<'a> {
-    pub fn new(display: &'a mut crate::drivers::display::Display, style: TextStyle<'a>) -> Self {
+    pub fn new(display: &'a mut drivers_hw::display::Display, style: TextStyle<'a>) -> Self {
         Self {
             pos: Point::new(0, 0),
             line_start: 0,

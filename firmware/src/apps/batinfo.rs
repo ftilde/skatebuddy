@@ -1,10 +1,9 @@
 use bitmap_font::TextStyle;
 use core::fmt::Write;
+use drivers_hw::lpm013m1126c::Rgb111;
 use embassy_time::{Duration, Ticker};
 
-use crate::{
-    drivers::lpm013m1126c::Rgb111, render_top_bar, ui::TextWriter, Context, DISPLAY_EVENT,
-};
+use crate::{render_top_bar, ui::TextWriter, Context};
 
 pub async fn battery_info(ctx: &mut Context) {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
@@ -48,7 +47,7 @@ pub async fn battery_info(ctx: &mut Context) {
         match embassy_futures::select::select3(
             ticker.next(),
             ctx.button.wait_for_press(),
-            DISPLAY_EVENT.wait(),
+            drivers_hw::wait_display_event(),
         )
         .await
         {
@@ -60,9 +59,7 @@ pub async fn battery_info(ctx: &mut Context) {
                     break;
                 }
             }
-            embassy_futures::select::Either3::Third(_event) => {
-                DISPLAY_EVENT.reset();
-            }
+            embassy_futures::select::Either3::Third(_event) => {}
         }
     }
 }
