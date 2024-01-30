@@ -21,7 +21,7 @@ pub mod display;
 pub mod flash;
 pub mod gps;
 pub mod hardware;
-pub use drivers_shared::lpm013m1126c;
+pub mod lpm013m1126c;
 pub mod mag;
 pub mod time;
 pub mod touch;
@@ -77,7 +77,9 @@ pub struct Context {
     pub twi1: TWISPI1,
 }
 
-async fn init(spawner: embassy_executor::Spawner) -> Context {
+pub type Spawner = embassy_executor::Spawner;
+
+async fn init(spawner: Spawner) -> Context {
     let mut conf = embassy_nrf::config::Config::default();
     conf.lfclk_source = embassy_nrf::config::LfclkSource::ExternalXtal;
     conf.dcdc.reg1 = true;
@@ -214,7 +216,7 @@ impl<F: core::future::Future<Output = Never> + 'static, C: FnOnce(Context) -> F 
 }
 
 #[embassy_executor::task]
-async fn main_task(main: impl Main) {
+pub async fn main_task(main: impl Main) {
     let spawner = embassy_executor::Spawner::for_current_executor().await;
     let ctx = init(spawner).await;
     let future = main.build(ctx);

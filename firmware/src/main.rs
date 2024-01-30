@@ -17,19 +17,19 @@ mod ui;
 
 use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;
-use drivers_hw::{time, Context};
+use drivers::{time, Context};
 use embedded_graphics::prelude::*;
 use embedded_graphics::text::Text;
 
-use drivers_hw::lpm013m1126c::{BWConfig, Rgb111};
+use drivers::lpm013m1126c::{BWConfig, Rgb111};
 
-use drivers_hw::futures::select;
-use drivers_hw::time::{Duration, Timer};
+use drivers::futures::select;
+use drivers::time::{Duration, Timer};
 
 async fn render_top_bar(
-    lcd: &mut drivers_hw::display::Display,
-    bat: &drivers_hw::battery::AsyncBattery,
-    bat_state: &mut drivers_hw::battery::BatteryChargeState,
+    lcd: &mut drivers::display::Display,
+    bat: &drivers::battery::AsyncBattery,
+    bat_state: &mut drivers::battery::BatteryChargeState,
 ) {
     let bw_config = BWConfig {
         off: Rgb111::black(),
@@ -61,9 +61,9 @@ async fn render_top_bar(
         4,
         "{}{:0>2}",
         match bat_state.read() {
-            drivers_hw::battery::ChargeState::Full => 'F',
-            drivers_hw::battery::ChargeState::Charging => 'C',
-            drivers_hw::battery::ChargeState::Draining => 'D',
+            drivers::battery::ChargeState::Full => 'F',
+            drivers::battery::ChargeState::Charging => 'C',
+            drivers::battery::ChargeState::Draining => 'D',
         },
         v.percentage() as i32
     );
@@ -91,7 +91,7 @@ fn draw_centered(
 
     let style = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
-    let x = (drivers_hw::lpm013m1126c::WIDTH - text_len * font.width() as usize) / 2;
+    let x = (drivers::lpm013m1126c::WIDTH - text_len * font.width() as usize) / 2;
     Text::new(text, Point::new(x as i32, y), style)
         .draw(&mut ctx.lcd.binary(bw_config))
         .unwrap();
@@ -134,9 +134,9 @@ async fn clock(ctx: &mut Context) {
                 "{: >3}%{}",
                 perc,
                 match ctx.bat_state.read() {
-                    drivers_hw::battery::ChargeState::Full => 'F',
-                    drivers_hw::battery::ChargeState::Charging => 'C',
-                    drivers_hw::battery::ChargeState::Draining => 'D',
+                    drivers::battery::ChargeState::Full => 'F',
+                    drivers::battery::ChargeState::Charging => 'C',
+                    drivers::battery::ChargeState::Draining => 'D',
                 },
             );
             let col = if perc > 95 {
@@ -152,8 +152,7 @@ async fn clock(ctx: &mut Context) {
                 on: col,
             };
 
-            let x =
-                drivers_hw::lpm013m1126c::WIDTH - bat.as_str().len() * tiny_font.width() as usize;
+            let x = drivers::lpm013m1126c::WIDTH - bat.as_str().len() * tiny_font.width() as usize;
             Text::new(bat.as_str(), Point::new(x as _, 0), tiny_style)
                 .draw(&mut ctx.lcd.binary(bw_config))
                 .unwrap();
@@ -174,7 +173,7 @@ async fn clock(ctx: &mut Context) {
         match select::select3(
             next_wakeup,
             ctx.button.wait_for_press(),
-            drivers_hw::wait_display_event(),
+            drivers::wait_display_event(),
         )
         .await
         {
@@ -196,7 +195,7 @@ async fn reset(ctx: &mut Context) {
 
     if apps::menu::grid_menu(ctx, options, false).await {
         ctx.lcd.clear().await;
-        drivers_hw::sys_reset();
+        drivers::sys_reset();
     }
 }
 
@@ -238,7 +237,7 @@ async fn app_menu(ctx: &mut Context) {
 
 #[cortex_m_rt::entry]
 fn main() -> ! {
-    drivers_hw::run(|mut ctx| async move {
+    drivers::run(|mut ctx| async move {
         loop {
             clock(&mut ctx).await;
             app_menu(&mut ctx).await;

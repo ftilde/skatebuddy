@@ -89,7 +89,7 @@ impl Display {
         self.disp.set_low();
     }
 
-    pub(crate) async fn setup(
+    pub async fn setup(
         spawner: &embassy_executor::Spawner,
         spi: SPI2,
         cs: hw::CS,
@@ -171,7 +171,7 @@ pub struct Backlight {
 }
 
 impl Backlight {
-    pub(crate) fn new(pin: hw::BL) -> Self {
+    pub fn new(pin: hw::BL) -> Self {
         let level = Level::Low;
         Self {
             level,

@@ -1,9 +1,9 @@
 use super::hardware::accel as hw;
 use embassy_nrf::twim;
 
-type I2CInstance = embassy_nrf::peripherals::TWISPI1;
+use bitvec::prelude::*;
 
-pub use drivers_shared::accel::*;
+type I2CInstance = embassy_nrf::peripherals::TWISPI1;
 
 const ADDR_CNTL1: u8 = 0x18;
 //const ADDR_CNTL2: u8 = 0x19;
@@ -17,7 +17,7 @@ pub struct AccelRessources {
 }
 
 impl AccelRessources {
-    pub(crate) fn new(sda: hw::SDA, scl: hw::SCL) -> Self {
+    pub fn new(sda: hw::SDA, scl: hw::SCL) -> Self {
         Self { sda, scl }
     }
 
@@ -32,12 +32,12 @@ pub struct Accel<'a> {
 }
 
 impl<'a> Accel<'a> {
-    async fn read_registers(&mut self, r_addr: u8, r_buf: &mut [u8]) {
+    pub async fn read_registers(&mut self, r_addr: u8, r_buf: &mut [u8]) {
         let wbuf = [r_addr];
 
         self.i2c.write_read(hw::ADDR, &wbuf, r_buf).await.unwrap();
     }
-    async fn write_register(&mut self, r_addr: u8, w: u8) {
+    pub async fn write_register(&mut self, r_addr: u8, w: u8) {
         let wbuf = [r_addr, w];
 
         self.i2c.write(hw::ADDR, &wbuf).await.unwrap();
@@ -84,6 +84,12 @@ impl<'a> Accel<'a> {
     }
 }
 
+pub struct Reading {
+    pub x: i16,
+    pub y: i16,
+    pub z: i16,
+}
+
 impl<'a> Drop for Accel<'a> {
     fn drop(&mut self) {
         let mut cntl1 = self.config.cntl1;
@@ -94,4 +100,33 @@ impl<'a> Drop for Accel<'a> {
 
         self.i2c.blocking_write(hw::ADDR, &wbuf).unwrap();
     }
+}
+
+pub struct Config {
+    cntl1: BitArr!(for 8, in u8),
+    //cntl2: u8,
+    //cntl3: u8,
+}
+
+//#[repr(u8)]
+//pub enum Range {
+//    G2 = 0,
+//    G4 = 1,
+//    G8 = 2,
+//}
+
+impl Config {
+    pub fn new() -> Self {
+        Config {
+            cntl1: bitarr![u8, Lsb0; 0, 0, 0, 0, 0, 0, 0, 1],
+        }
+    }
+    //pub fn high_res(&mut self, set: bool) {
+    //    self.cntl1.set(6, set)
+    //}
+    //pub fn range(&mut self, range: Range) {
+    //    let r = range as u8;
+    //    self.cntl1.set(3, (r & 1) != 0);
+    //    self.cntl1.set(4, (r & 2) != 0);
+    //}
 }

@@ -10,7 +10,7 @@ pub struct MagRessources {
 type I2CInstance = embassy_nrf::peripherals::TWISPI1;
 
 impl MagRessources {
-    pub(crate) fn new(sda: hw::SDA, scl: hw::SCL) -> Self {
+    pub fn new(sda: hw::SDA, scl: hw::SCL) -> Self {
         Self { sda, scl }
     }
 

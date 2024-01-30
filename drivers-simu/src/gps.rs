@@ -14,13 +14,11 @@ use embassy_time::{Duration, Timer};
 
 use super::hardware::gps as hw;
 
-pub use drivers_shared::gps::*;
-
-pub(crate) type UartInstance = UARTE0;
-pub(crate) type TimerInstance = TIMER1;
-pub(crate) type Channel1Instance = PPI_CH1;
-pub(crate) type Channel2Instance = PPI_CH2;
-pub(crate) type PPIGroupInstance = PPI_GROUP1;
+pub type UartInstance = UARTE0;
+pub type TimerInstance = TIMER1;
+pub type Channel1Instance = PPI_CH1;
+pub type Channel2Instance = PPI_CH2;
+pub type PPIGroupInstance = PPI_GROUP1;
 
 pub struct GPSRessources {
     power: Output<'static, hw::EN>,
@@ -37,7 +35,7 @@ pub struct GPSRessources {
 }
 
 impl GPSRessources {
-    pub(crate) async fn new(
+    pub async fn new(
         power: hw::EN,
         tx: hw::TX,
         rx: hw::RX,
@@ -150,7 +148,7 @@ impl<'a> GPS<'a> {
         }
     }
 
-    async fn casic_msg(&mut self, msg_id: CASICMessageIdentifier, payload: &[u8]) {
+    pub async fn casic_msg(&mut self, msg_id: CASICMessageIdentifier, payload: &[u8]) {
         let len = payload.len() as u32;
         assert!(len < 2000);
         assert!(len % 4 == 0);
@@ -174,7 +172,7 @@ impl<'a> GPS<'a> {
         self.uart.flush().await.unwrap();
     }
 
-    async fn nmea_cmd(&mut self, cmd: &[u8]) {
+    pub async fn nmea_cmd(&mut self, cmd: &[u8]) {
         let check_sum = cmd.iter().fold(0u8, |a, b| a ^ b);
         let prefix = b"$";
         let mut check_sum_buf = [0u8; 5];
@@ -196,7 +194,7 @@ impl<'a> GPS<'a> {
         self.uart.flush().await.unwrap();
     }
 
-    async fn set_active_satellites(&mut self, cfg: SatelliteConfig) {
+    pub async fn set_active_satellites(&mut self, cfg: SatelliteConfig) {
         let mut cfg_num = 0;
         cfg_num += (cfg.gps as usize) << 0;
         cfg_num += (cfg.bds as usize) << 1;
@@ -205,7 +203,7 @@ impl<'a> GPS<'a> {
         self.nmea_cmd(cmd.as_bytes()).await;
     }
 
-    async fn set_msg_freq(&mut self, msg_id: CASICMessageIdentifier, rate: u16) {
+    pub async fn set_msg_freq(&mut self, msg_id: CASICMessageIdentifier, rate: u16) {
         #[repr(C, packed)]
         #[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
         struct Payload {
@@ -218,7 +216,7 @@ impl<'a> GPS<'a> {
         self.casic_msg(CFG_MSG, bytemuck::bytes_of(&payload)).await
     }
 
-    async fn set_nmea_msg_config(&mut self, cfg: NMEAMsgConfig) {
+    pub async fn set_nmea_msg_config(&mut self, cfg: NMEAMsgConfig) {
         fn p(i: u8) -> u8 {
             i.min(9)
         }
@@ -243,7 +241,7 @@ impl<'a> GPS<'a> {
         self.nmea_cmd(cmd.as_bytes()).await;
     }
 
-    async fn wait_for_init(&mut self) {
+    pub async fn wait_for_init(&mut self) {
         // First throw away everything until (and including) the first 0xff which signals the start
         // of the transmission
         loop {
@@ -282,10 +280,7 @@ impl<'a> GPS<'a> {
         .await;
     }
 
-    pub(crate) async fn with_messages<R>(
-        &mut self,
-        mut f: impl FnMut(Message) -> ControlFlow<R>,
-    ) -> R {
+    pub async fn with_messages<R>(&mut self, mut f: impl FnMut(Message) -> ControlFlow<R>) -> R {
         enum State {
             Casic,
             Nmea,
@@ -449,3 +444,56 @@ impl<'a> Drop for GPS<'a> {
 const CASIC_MAGIC_HEADER_0: u8 = 0xba;
 const CASIC_MAGIC_HEADER_1: u8 = 0xce;
 const CASIC_MAGIC_HEADER: [u8; 2] = [CASIC_MAGIC_HEADER_0, CASIC_MAGIC_HEADER_1];
+
+#[repr(C, packed)]
+#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct CASICPacketHeader {
+    pub len: u16,
+    pub msg_id: CASICMessageIdentifier,
+}
+
+//#[repr(C, packed)]
+//#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod)]
+pub type CASICMessageIdentifier = [u8; 2];
+// { class: u8, number: u8 }
+
+#[derive(Copy, Clone, defmt::Format)]
+pub struct RawCasicMsg<'a> {
+    pub id: CASICMessageIdentifier,
+    pub payload: &'a [u8],
+}
+
+impl<'a> RawCasicMsg<'a> {
+    pub fn parse(self) -> CasicMsg<'a> {
+        match self.id {
+            NAV_TIME_UTC => CasicMsg::NavTimeUTC(*bytemuck::from_bytes(self.payload)),
+            _ => CasicMsg::Unknown(self),
+        }
+    }
+}
+
+const NAV_TIME_UTC: CASICMessageIdentifier = [0x01, 0x10];
+const CFG_MSG: CASICMessageIdentifier = [0x06, 0x01];
+
+#[repr(C)]
+#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod, defmt::Format)]
+pub struct NavTimeUTC {
+    pub run_time: u32,
+    pub t_acc: f32,
+    pub mse: f32,
+    pub ms: u16,
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub min: u8,
+    pub sec: u8,
+    pub valid: u8,
+    pub time_src: u8,
+    pub date_valid: u8,
+}
+
+pub enum CasicMsg<'a> {
+    NavTimeUTC(NavTimeUTC),
+    Unknown(RawCasicMsg<'a>),
+}

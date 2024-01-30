@@ -8,9 +8,7 @@ use embassy_nrf::{
 };
 use embassy_time::{Duration, Instant};
 
-pub use drivers_shared::battery::*;
-
-pub(crate) struct Battery {
+pub struct Battery {
     saadc: SAADC,
     bat_val_pin: hw::VOLTAGE,
 }
@@ -20,8 +18,14 @@ pub struct BatteryChargeState {
     charge_complete_pin: Input<'static, hw::FULL>,
 }
 
+pub enum ChargeState {
+    Full,
+    Charging,
+    Draining,
+}
+
 impl BatteryChargeState {
-    pub(crate) fn new(charge_port_pin: hw::CHARGING, charge_complete_pin: hw::FULL) -> Self {
+    pub fn new(charge_port_pin: hw::CHARGING, charge_complete_pin: hw::FULL) -> Self {
         let charge_port_pin = Input::new(charge_port_pin, Pull::None);
         let charge_complete_pin = Input::new(charge_complete_pin, Pull::None);
 
@@ -44,7 +48,7 @@ impl BatteryChargeState {
 }
 
 impl Battery {
-    pub(crate) fn new(saadc: SAADC, bat_val_pin: hw::VOLTAGE) -> Self {
+    pub fn new(saadc: SAADC, bat_val_pin: hw::VOLTAGE) -> Self {
         Self { saadc, bat_val_pin }
     }
 
@@ -77,7 +81,7 @@ impl Battery {
     //    Reading { raw: mean << 8 }
     //}
 
-    async fn read_specific_median(&mut self, vals: &mut [u32], duration: Duration) -> Reading {
+    pub async fn read_specific_median(&mut self, vals: &mut [u32], duration: Duration) -> Reading {
         assert!(vals.len() > 0);
         for v in vals.iter_mut() {
             embassy_time::Timer::after(duration).await;
@@ -90,7 +94,7 @@ impl Battery {
         Reading { raw: *med << 16 }
     }
 
-    async fn read_accurate(&mut self) -> Reading {
+    pub async fn read_accurate(&mut self) -> Reading {
         let mut vals = [0; 17];
         self.read_specific_median(&mut vals, Duration::from_millis(100))
             .await
@@ -103,6 +107,38 @@ impl Battery {
     //    //    .await
     //    self.read_specific_mean(1, Duration::from_millis(0)).await
     //}
+}
+
+#[derive(Copy, Clone)]
+pub struct Reading {
+    raw: u32,
+}
+
+const FULL_VOLTAGE_VAL: f32 = 0.3144;
+
+impl Reading {
+    pub fn voltage(&self) -> f32 {
+        self.raw as f32 * (4.2 / 16384.0 / FULL_VOLTAGE_VAL / (1 << 16) as f32)
+    }
+
+    pub fn percentage(&self) -> f32 {
+        let voltage = self.voltage();
+        let v_100 = 4.2;
+        let v_80 = 3.95;
+        let v_10 = 3.70;
+        let v_0 = 3.3;
+
+        // Piecewise linear approximation as done in espruino
+        let percentage = if voltage > v_80 {
+            (voltage - v_80) * 20.0 / (v_100 - v_80) + 80.0
+        } else if voltage > v_10 {
+            (voltage - v_10) * 70.0 / (v_80 - v_10) + 10.0
+        } else {
+            (voltage - v_0) * 10.0 / (v_10 - v_0)
+        };
+
+        percentage
+    }
 }
 
 static LAST_ASYNC_READING: AtomicU32 = AtomicU32::new(0);
@@ -155,7 +191,7 @@ async fn accurate_battery_task(mut battery: Battery) {
 pub struct AsyncBattery;
 
 impl AsyncBattery {
-    pub(crate) fn new(spawner: &embassy_executor::Spawner, battery: Battery) -> Self {
+    pub fn new(spawner: &embassy_executor::Spawner, battery: Battery) -> Self {
         spawner.spawn(accurate_battery_task(battery)).unwrap();
         Self
     }
@@ -184,7 +220,8 @@ impl AsyncBattery {
     }
 }
 
-struct CurrentEstimator {
+#[allow(unused)]
+pub struct CurrentEstimator {
     last_percentage: f32,
     last_time: Instant,
 }
@@ -242,5 +279,18 @@ impl CurrentEstimator {
         let r2 = Reading { raw: r2 }.percentage();
 
         calc_current(dt, r1, r2)
+    }
+}
+
+#[allow(unused)]
+#[derive(Copy, Clone)]
+pub struct CurrentReading {
+    micro_ampere: u32,
+}
+
+#[allow(unused)]
+impl CurrentReading {
+    pub fn micro_ampere(self) -> u32 {
+        self.micro_ampere
     }
 }

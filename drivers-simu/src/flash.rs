@@ -5,7 +5,7 @@ use littlefs2::fs::Filesystem;
 
 type SPIInstance = embassy_nrf::peripherals::QSPI;
 
-struct Reg1(u8);
+pub struct Reg1(u8);
 impl Reg1 {
     fn wel(&self) -> bool {
         (self.0 & 0b10) != 0
@@ -33,7 +33,7 @@ pub struct FlashRessources {
 }
 
 impl FlashRessources {
-    pub(crate) async fn new(
+    pub async fn new(
         spi: SPIInstance,
         cs: hw::CS,
         sck: hw::SCK,
@@ -159,7 +159,7 @@ impl<'a> Flash<'a> {
         self.qspi.read(addr, out).await.unwrap();
     }
 
-    async fn wait_idle(&mut self) -> Reg1 {
+    pub async fn wait_idle(&mut self) -> Reg1 {
         loop {
             let reg = self.read_status_reg().await;
             if !reg.wip() {

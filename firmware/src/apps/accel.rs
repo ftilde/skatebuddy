@@ -1,8 +1,8 @@
 use bitmap_font::TextStyle;
 use core::fmt::Write;
-use drivers_hw::futures::select;
-use drivers_hw::lpm013m1126c::Rgb111;
-use drivers_hw::time::{Duration, Ticker};
+use drivers::futures::select;
+use drivers::lpm013m1126c::Rgb111;
+use drivers::time::{Duration, Ticker};
 
 use crate::{render_top_bar, ui::TextWriter, Context};
 
@@ -10,7 +10,7 @@ pub async fn accel(ctx: &mut Context) {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
-    let config = drivers_hw::accel::Config::new();
+    let config = drivers::accel::Config::new();
     let mut accel = ctx.accel.on(&mut ctx.twi1, config).await;
 
     let mut ticker = Ticker::every(Duration::from_millis(100));

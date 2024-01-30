@@ -1,0 +1,12 @@
+[package]
+name = "drivers"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+[target.'cfg(target_arch = "arm")'.dependencies]
+drivers-hw = { path = "../drivers-hw" }
+[target.'cfg(not(target_arch = "arm"))'.dependencies]
+drivers-simu = { path = "../drivers-simu" }

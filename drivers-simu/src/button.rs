@@ -4,8 +4,8 @@ use embassy_time::{Duration, Instant, Timer};
 use super::hardware::btn as hw;
 
 const DEBOUNCE_TIME: Duration = Duration::from_millis(10);
-const PRESSED: Level = Level::Low;
-const RELEASED: Level = Level::High;
+pub const PRESSED: Level = Level::Low;
+pub const RELEASED: Level = Level::High;
 
 pub struct Button {
     pin: Input<'static, hw::EN>,
@@ -21,7 +21,7 @@ pub struct Button {
 //    }
 //}
 impl Button {
-    pub(crate) fn new(pin: hw::EN) -> Self {
+    pub fn new(pin: hw::EN) -> Self {
         let now = Instant::now();
         Self {
             pin: Input::new(pin, Pull::Up),

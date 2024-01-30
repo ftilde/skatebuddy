@@ -45,8 +45,8 @@ embedded-hal-async = "1.0.0-rc.3"
 core2 = { version = "0.4.0", default-features = false }
 chrono = { version = "0.4.31", default-features = false }
 bitvec = { version = "1.0.1", default-features = false }
-num_enum = { version = "0.7.1", default-features = false }
 embedded-io-async = "0.6.0"
 littlefs2 = "0.4.0"
 static_cell = "2.0.0"
 util = { path = "../util" }
+drivers-shared = { path = "../drivers-shared" }
