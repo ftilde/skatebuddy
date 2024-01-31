@@ -14,6 +14,7 @@
 
 mod apps;
 mod ui;
+mod util;
 
 use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;

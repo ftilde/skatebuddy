@@ -2,14 +2,9 @@ use bitmap_font::TextStyle;
 use core::fmt::Write;
 use drivers::futures::select;
 use drivers::lpm013m1126c::Rgb111;
-use drivers::time::{Duration, Ticker};
+use drivers::time::{self, Duration, Ticker};
 
-use crate::{
-    render_top_bar,
-    time::{self, hours_mins_secs},
-    ui::TextWriter,
-    Context,
-};
+use crate::{render_top_bar, ui::TextWriter, util::hours_mins_secs, Context};
 
 pub async fn clock_info(ctx: &mut Context) {
     let font = bitmap_font::tamzen::FONT_16x32_BOLD;
