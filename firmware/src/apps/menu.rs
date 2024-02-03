@@ -2,6 +2,8 @@ use crate::{render_top_bar, ui::ButtonStyle, Context};
 use drivers::futures::{join, select};
 use drivers::lpm013m1126c::Rgb111;
 use embedded_graphics::prelude::{Point, Size};
+
+#[cfg(target_arch = "arm")]
 use micromath::F32Ext;
 
 pub async fn grid_menu<T: Copy, const N: usize>(
@@ -53,7 +55,7 @@ pub async fn grid_menu<T: Copy, const N: usize>(
         match evt {
             select::Either::First(_) => break 'outer button,
             select::Either::Second(e) => {
-                defmt::println!("BTN: {:?}", e);
+                crate::println!("BTN: {:?}", e);
                 for (btn, app) in &mut buttons {
                     if btn.clicked(&e) {
                         break 'outer *app;

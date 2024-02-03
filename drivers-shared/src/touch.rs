@@ -1,7 +1,7 @@
 use embedded_graphics::prelude::Point;
 
 #[repr(u8)]
-#[derive(Copy, Clone, defmt::Format, num_enum::TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, defmt::Format, num_enum::TryFromPrimitive)]
 pub enum EventKind {
     Press = 0,
     Release = 1,
@@ -9,7 +9,7 @@ pub enum EventKind {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, defmt::Format, num_enum::TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, defmt::Format, num_enum::TryFromPrimitive)]
 pub enum Gesture {
     None = 0,
     SwipeDown = 1,
@@ -21,7 +21,7 @@ pub enum Gesture {
     LongPress = 12,
 }
 
-#[derive(Copy, Clone, defmt::Format)]
+#[derive(Copy, Clone, Debug, defmt::Format)]
 pub struct TouchEvent {
     pub gesture: Gesture,
     pub n_points: u8,

@@ -31,7 +31,7 @@ impl<'a, 'b, C> ButtonDefinition<'a, 'b, C> {
     }
 }
 
-#[derive(defmt::Format)]
+#[cfg_attr(target_arch = "arm", derive(defmt::Format))]
 enum ButtonState {
     Down,
     Up,

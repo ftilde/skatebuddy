@@ -10,7 +10,7 @@ pub struct CASICPacketHeader {
 pub type CASICMessageIdentifier = [u8; 2];
 // { class: u8, number: u8 }
 
-#[derive(Copy, Clone, defmt::Format)]
+#[derive(Copy, Clone, Debug, defmt::Format)]
 pub struct RawCasicMsg<'a> {
     pub id: CASICMessageIdentifier,
     pub payload: &'a [u8],
@@ -29,7 +29,7 @@ pub const NAV_TIME_UTC: CASICMessageIdentifier = [0x01, 0x10];
 pub const CFG_MSG: CASICMessageIdentifier = [0x06, 0x01];
 
 #[repr(C)]
-#[derive(Copy, Clone, bytemuck::Zeroable, bytemuck::Pod, defmt::Format)]
+#[derive(Copy, Clone, Debug, defmt::Format, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct NavTimeUTC {
     pub run_time: u32,
     pub t_acc: f32,

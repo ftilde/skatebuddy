@@ -14,3 +14,6 @@ flash: ${ELF}
 
 reset: ${ELF}
 	probe-run --chip nRF52840_xxAA ${ELF} --no-flash || ${DISABLE_DEBUG_SCRIPT}
+
+simu: ${ELF}
+	pushd firmware; cargo run --target=x86_64-unknown-linux-gnu; popd

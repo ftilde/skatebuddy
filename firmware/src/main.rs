@@ -1,6 +1,4 @@
-#![no_main]
-#![no_std]
-
+#![cfg_attr(target_arch = "arm", no_main, no_std)]
 // Potentially useful in the future:
 //
 // Layout
@@ -15,6 +13,24 @@
 mod apps;
 mod ui;
 mod util;
+
+mod log {
+    #[cfg(not(target_arch = "arm"))]
+    macro_rules! println {
+        ($($arg:expr),*) => { std::println!($($arg),*) };
+        //(debug, $($arg:expr),*) => { log::debug!($($arg),*) };
+    }
+
+    #[cfg(target_arch = "arm")]
+    macro_rules! println {
+        ($($arg:expr),*) => { defmt::println!($($arg),*) };
+        //(debug, $($arg:expr),*) => { defmt::debug!($($arg),*) };
+    }
+
+    pub(crate) use println;
+}
+
+use log::println;
 
 use arrform::{arrform, ArrForm};
 use bitmap_font::TextStyle;
@@ -236,7 +252,7 @@ async fn app_menu(ctx: &mut Context) {
     }
 }
 
-#[cortex_m_rt::entry]
+#[cfg_attr(target_arch = "arm", cortex_m_rt::entry)]
 fn main() -> ! {
     drivers::run(|mut ctx| async move {
         loop {
