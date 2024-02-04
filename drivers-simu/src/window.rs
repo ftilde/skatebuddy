@@ -36,13 +36,13 @@ impl Window {
                 let line_num = (line[1] - 1) as usize;
 
                 let line_in = &line[2..];
-                let line_in = line_in.view_bits::<Lsb0>().chunks(4);
+                let line_in = line_in.view_bits::<Msb0>().chunks(4);
                 let line_out = &mut self.window_buffer[lpm013m1126c::WIDTH * line_num..]
                     [..lpm013m1126c::WIDTH];
                 for (in_, out_) in line_in.zip(line_out.iter_mut()) {
-                    let r = (in_[1] as u32) * 0xff;
-                    let g = (in_[2] as u32) * 0xff;
-                    let b = (in_[3] as u32) * 0xff;
+                    let r = (in_[0] as u32) * 0xff;
+                    let g = (in_[1] as u32) * 0xff;
+                    let b = (in_[2] as u32) * 0xff;
                     *out_ = r << 16 | g << 8 | b;
                 }
             }
