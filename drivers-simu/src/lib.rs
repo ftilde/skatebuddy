@@ -68,13 +68,20 @@ impl<F: core::future::Future<Output = Never> + 'static, C: FnOnce(Context) -> F 
 }
 
 pub fn run(main: impl Main) -> ! {
+    let window = minifb::Window::new(
+        "simu",
+        lpm013m1126c::WIDTH,
+        lpm013m1126c::HEIGHT,
+        Default::default(),
+    )
+    .unwrap();
     let context = Context {
         flash: flash::FlashRessources {},
         bat_state: battery::BatteryChargeState {},
         battery: battery::AsyncBattery,
         button: button::Button {},
         backlight: display::Backlight {},
-        lcd: display::Display::new(),
+        lcd: display::Display::new(window),
         start_time: *time::BOOT,
         mag: mag::MagRessources {},
         touch: touch::TouchRessources {},

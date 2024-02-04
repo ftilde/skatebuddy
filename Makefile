@@ -7,7 +7,7 @@ all: ${ELF}
 ${ELF}:
 	pushd firmware; cargo build --release; popd
 
-.PHONY: flash ${ELF}
+.PHONY: flash ${ELF} simu
 
 flash: ${ELF}
 	probe-run --chip nRF52840_xxAA ${ELF} || ${DISABLE_DEBUG_SCRIPT}
@@ -15,5 +15,5 @@ flash: ${ELF}
 reset: ${ELF}
 	probe-run --chip nRF52840_xxAA ${ELF} --no-flash || ${DISABLE_DEBUG_SCRIPT}
 
-simu: ${ELF}
+simu:
 	pushd firmware; cargo run --target=x86_64-unknown-linux-gnu; popd

@@ -15,8 +15,8 @@ const NUM_BITS_PER_PIXEL: usize = 4;
 const PIXEL_MASK: u8 = (1 << NUM_BITS_PER_PIXEL) - 1 as u8;
 
 const NUM_PREFIX_BYTES_PER_ROW: usize = 2;
-const NUM_BYTES_PER_ROW: usize = WIDTH / NUM_PIXELS_PER_CELL + NUM_PREFIX_BYTES_PER_ROW;
-const NUM_REQUIRED_SUFFIX_BYTES: usize = 2; // We need 16 more clock cycles after the last row.
+pub const NUM_BYTES_PER_ROW: usize = WIDTH / NUM_PIXELS_PER_CELL + NUM_PREFIX_BYTES_PER_ROW;
+pub const NUM_REQUIRED_SUFFIX_BYTES: usize = 2; // We need 16 more clock cycles after the last row.
 
 pub struct Buffer {
     min_row: u8,
@@ -103,6 +103,16 @@ impl Buffer {
             inner: self,
             config,
         }
+    }
+
+    pub fn lines_for_update(&mut self) -> Option<&[u8]> {
+        if self.max_row < self.min_row {
+            return None;
+        }
+
+        let begin = self.min_row as usize * NUM_BYTES_PER_ROW;
+        let end = (self.max_row as usize + 1) * NUM_BYTES_PER_ROW + NUM_REQUIRED_SUFFIX_BYTES;
+        Some(&self.values[begin..end])
     }
 
     pub async fn present<'a, SPI: embedded_hal_async::spi::SpiDevice>(&mut self, spi: &mut SPI) {
