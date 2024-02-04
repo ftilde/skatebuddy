@@ -4,11 +4,14 @@ pub mod button;
 pub mod display;
 pub mod flash;
 pub mod gps;
+use std::sync::Arc;
+
 pub use drivers_shared::lpm013m1126c;
 pub mod futures;
 pub mod mag;
 pub mod time;
 pub mod touch;
+mod window;
 
 //TODO: Move
 pub enum DisplayEvent {
@@ -68,18 +71,15 @@ impl<F: core::future::Future<Output = Never> + 'static, C: FnOnce(Context) -> F 
 }
 
 pub fn run(main: impl Main) -> ! {
-    let window = minifb::Window::new(
-        "simu",
-        lpm013m1126c::WIDTH,
-        lpm013m1126c::HEIGHT,
-        Default::default(),
-    )
-    .unwrap();
+    let window = Arc::new(smol::lock::Mutex::new(window::Window::new()));
+
     let context = Context {
         flash: flash::FlashRessources {},
         bat_state: battery::BatteryChargeState {},
         battery: battery::AsyncBattery,
-        button: button::Button {},
+        button: button::Button {
+            window: window.clone(),
+        },
         backlight: display::Backlight {},
         lcd: display::Display::new(window),
         start_time: *time::BOOT,
