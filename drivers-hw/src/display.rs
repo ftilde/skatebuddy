@@ -159,7 +159,15 @@ impl Display {
 
     pub async fn present(&mut self) {
         self.with_spi(|buffer, mut spi| async move {
-            buffer.present(&mut spi).await;
+            if let Some(buffer_to_present) = buffer.lines_for_update() {
+                use embedded_hal_async::spi::SpiDevice;
+                spi.transaction(&mut [
+                    embedded_hal_async::spi::Operation::Write(&buffer_to_present),
+                    embedded_hal_async::spi::Operation::DelayNs(10_000),
+                ])
+                .await
+                .unwrap();
+            }
         })
         .await;
     }
