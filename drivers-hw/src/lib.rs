@@ -7,7 +7,6 @@ use embassy_nrf::{
     saadc, spim, twim,
 };
 use embassy_time::Instant;
-use littlefs2::fs::Filesystem;
 use static_cell::StaticCell;
 
 use defmt_rtt as _; //logger
@@ -108,43 +107,9 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
 
     let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
 
-    let mut flash =
+    let flash =
         flash::FlashRessources::new(p.QSPI, p.P0_14, p.P0_16, p.P0_15, p.P0_13, p.P1_10, p.P1_11)
             .await;
-    {
-        let mut alloc = Filesystem::allocate();
-
-        let mut flash = flash.on().await;
-        let fs = match Filesystem::mount(&mut alloc, &mut flash) {
-            Ok(fs) => {
-                defmt::println!("Mounting existing fs",);
-                fs
-            }
-            Err(_e) => {
-                defmt::println!("Formatting fs because of mount error",);
-                Filesystem::format(&mut flash).unwrap();
-                Filesystem::mount(&mut alloc, &mut flash).unwrap()
-            }
-        };
-
-        let num_boots = fs
-            .open_file_with_options_and_then(
-                |options| options.read(true).write(true).create(true),
-                &littlefs2::path::PathBuf::from(b"bootcount.bin"),
-                |file| {
-                    let mut boot_num = 0u32;
-                    if file.len().unwrap() >= 4 {
-                        file.read(bytemuck::bytes_of_mut(&mut boot_num)).unwrap();
-                    };
-                    boot_num += 1;
-                    file.seek(littlefs2::io::SeekFrom::Start(0)).unwrap();
-                    file.write(bytemuck::bytes_of(&boot_num)).unwrap();
-                    Ok(boot_num)
-                },
-            )
-            .unwrap();
-        defmt::println!("This is boot nr {}", num_boots);
-    }
 
     //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
     let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);

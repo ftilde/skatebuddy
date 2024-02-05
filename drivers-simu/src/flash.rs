@@ -1,8 +1,23 @@
-use littlefs2::fs::Filesystem;
+use littlefs2::{driver::Storage, fs::Filesystem};
 
-pub struct FlashRessources {}
+pub struct FlashRessources {
+    file: memmap::MmapMut,
+}
 
 impl FlashRessources {
+    pub fn new() -> Self {
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open("simu_flash.bin")
+            .unwrap();
+        file.set_len((Flash::BLOCK_COUNT * Flash::BLOCK_SIZE) as _)
+            .unwrap();
+
+        let file = unsafe { memmap::MmapMut::map_mut(&file).unwrap() };
+        Self { file }
+    }
     pub async fn on<'a>(&'a mut self) -> Flash<'a> {
         Flash { ressources: self }
     }
@@ -27,16 +42,21 @@ pub struct Flash<'a> {
 const SECTOR_SIZE: usize = 4096;
 
 impl<'a> Flash<'a> {
-    pub async fn read(&mut self, _addr: u32 /*actually 24 bit*/, _out: &mut [u8]) {
-        todo!()
+    pub async fn read(&mut self, addr: u32 /*actually 24 bit*/, out: &mut [u8]) {
+        out.copy_from_slice(&self.ressources.file[addr as usize..][..out.len()])
     }
 
-    pub async fn write(&mut self, _addr: u32 /*actually 24 bit*/, _buf: &[u8]) {
-        todo!()
+    pub async fn write(&mut self, addr: u32 /*actually 24 bit*/, buf: &[u8]) {
+        let flash = &mut self.ressources.file[addr as usize..][..buf.len()];
+        for (f, b) in flash.iter_mut().zip(buf.iter()) {
+            *f = *f & b;
+        }
     }
 
-    pub async fn erase(&mut self, _addr: u32 /*actually 24 bit*/) {
-        todo!()
+    pub async fn erase(&mut self, addr: u32 /*actually 24 bit*/) {
+        let base = (addr as usize / SECTOR_SIZE) * SECTOR_SIZE;
+        let sector = &mut self.ressources.file[base as usize..][..SECTOR_SIZE];
+        sector.fill(0xff);
     }
 }
 

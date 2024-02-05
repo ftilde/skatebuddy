@@ -40,6 +40,8 @@ use embedded_graphics::text::Text;
 
 use drivers::lpm013m1126c::{BWConfig, Rgb111};
 
+use littlefs2::fs::Filesystem;
+
 use drivers::futures::select;
 use drivers::time::{Duration, Timer};
 
@@ -254,7 +256,42 @@ async fn app_menu(ctx: &mut Context) {
 
 #[cfg_attr(target_arch = "arm", cortex_m_rt::entry)]
 fn main() -> ! {
-    drivers::run(|mut ctx| async move {
+    drivers::run(|mut ctx: drivers::Context| async move {
+        {
+            let mut alloc = Filesystem::allocate();
+
+            let mut flash = ctx.flash.on().await;
+            let fs = match Filesystem::mount(&mut alloc, &mut flash) {
+                Ok(fs) => {
+                    crate::println!("Mounting existing fs");
+                    fs
+                }
+                Err(_e) => {
+                    crate::println!("Formatting fs because of mount error");
+                    Filesystem::format(&mut flash).unwrap();
+                    Filesystem::mount(&mut alloc, &mut flash).unwrap()
+                }
+            };
+
+            let num_boots = fs
+                .open_file_with_options_and_then(
+                    |options| options.read(true).write(true).create(true),
+                    &littlefs2::path::PathBuf::from(b"bootcount.bin"),
+                    |file| {
+                        let mut boot_num = 0u32;
+                        if file.len().unwrap() >= 4 {
+                            file.read(bytemuck::bytes_of_mut(&mut boot_num)).unwrap();
+                        };
+                        boot_num += 1;
+                        file.seek(littlefs2::io::SeekFrom::Start(0)).unwrap();
+                        file.write(bytemuck::bytes_of(&boot_num)).unwrap();
+                        Ok(boot_num)
+                    },
+                )
+                .unwrap();
+            crate::println!("This is boot nr {}", num_boots);
+        }
+
         loop {
             clock(&mut ctx).await;
             app_menu(&mut ctx).await;

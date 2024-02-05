@@ -74,7 +74,7 @@ pub fn run(main: impl Main) -> ! {
     let window = Arc::new(smol::lock::Mutex::new(window::Window::new()));
 
     let context = Context {
-        flash: flash::FlashRessources {},
+        flash: flash::FlashRessources::new(),
         bat_state: battery::BatteryChargeState {},
         battery: battery::AsyncBattery,
         button: button::Button::new(window.clone()),

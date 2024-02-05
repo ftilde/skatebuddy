@@ -21,3 +21,4 @@ once_cell = "1.19.0"
 futures = "0.3.30"
 embassy-futures = { git = "https://github.com/ftilde/embassy.git", branch="skatebuddy" }
 minifb = "0.25.0"
+memmap = "0.7.0"
