@@ -29,50 +29,52 @@ pub struct Touch<'a> {
 impl<'a> Touch<'a> {
     pub async fn wait_for_event(&mut self) -> TouchEvent {
         loop {
-            let mut window = self.hw.window.lock().await;
-            window.window.update();
-            let down = window.window.get_mouse_down(minifb::MouseButton::Left);
+            {
+                let mut window = self.hw.window.lock().unwrap();
+                window.window.update();
+                let down = window.window.get_mouse_down(minifb::MouseButton::Left);
 
-            if let Some(pos) = window.window.get_mouse_pos(minifb::MouseMode::Clamp) {
-                let x = pos.0 as u8;
-                let y = pos.1 as u8;
-                let n_points = 1;
-                let gesture = Gesture::SinglePress;
-                let prev_down = self.prev_down;
-                self.prev_down = down;
-                let prev_pos = self.prev_pos;
-                self.prev_pos = pos;
-                match (prev_down, down) {
-                    (false, true) => {
-                        return TouchEvent {
-                            gesture,
-                            n_points,
-                            kind: EventKind::Press,
-                            x,
-                            y,
-                        }
-                    }
-                    (true, false) => {
-                        return TouchEvent {
-                            gesture,
-                            n_points,
-                            kind: EventKind::Release,
-                            x,
-                            y,
-                        }
-                    }
-                    (true, true) => {
-                        if prev_pos != pos {
+                if let Some(pos) = window.window.get_mouse_pos(minifb::MouseMode::Clamp) {
+                    let x = pos.0 as u8;
+                    let y = pos.1 as u8;
+                    let n_points = 1;
+                    let gesture = Gesture::SinglePress;
+                    let prev_down = self.prev_down;
+                    self.prev_down = down;
+                    let prev_pos = self.prev_pos;
+                    self.prev_pos = pos;
+                    match (prev_down, down) {
+                        (false, true) => {
                             return TouchEvent {
                                 gesture,
                                 n_points,
-                                kind: EventKind::Hold,
+                                kind: EventKind::Press,
                                 x,
                                 y,
-                            };
+                            }
                         }
+                        (true, false) => {
+                            return TouchEvent {
+                                gesture,
+                                n_points,
+                                kind: EventKind::Release,
+                                x,
+                                y,
+                            }
+                        }
+                        (true, true) => {
+                            if prev_pos != pos {
+                                return TouchEvent {
+                                    gesture,
+                                    n_points,
+                                    kind: EventKind::Hold,
+                                    x,
+                                    y,
+                                };
+                            }
+                        }
+                        (false, false) => {}
                     }
-                    (false, false) => {}
                 }
             }
 

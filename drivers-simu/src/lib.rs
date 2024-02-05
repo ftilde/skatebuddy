@@ -72,14 +72,16 @@ impl<F: core::future::Future<Output = Never> + 'static, C: FnOnce(Context) -> F 
 }
 
 pub fn run(main: impl Main) -> ! {
-    let window = Arc::new(smol::lock::Mutex::new(window::Window::new()));
+    let window = Arc::new(std::sync::Mutex::new(window::Window::new()));
 
     let context = Context {
         flash: flash::FlashRessources::new(),
         bat_state: battery::BatteryChargeState {},
         battery: battery::AsyncBattery,
         button: button::Button::new(window.clone()),
-        backlight: display::Backlight {},
+        backlight: display::Backlight {
+            window: window.clone(),
+        },
         lcd: display::Display::new(window.clone()),
         start_time: *time::BOOT,
         mag: mag::MagRessources {},

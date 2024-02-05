@@ -25,24 +25,49 @@ impl Display {
             window,
         }
     }
-    pub fn on(&mut self) {}
+    pub fn on(&mut self) {
+        let mut window = self.window.lock().unwrap();
+        window.display_on = true;
+        window.update_window();
+    }
 
-    pub fn off(&mut self) {}
+    pub fn off(&mut self) {
+        let mut window = self.window.lock().unwrap();
+        window.display_on = false;
+        window.update_window();
+    }
 
-    pub async fn clear(&mut self) {}
+    pub async fn clear(&mut self) {
+        let mut window = self.window.lock().unwrap();
+        window.clear_buffer();
+    }
 
-    pub async fn blink(&mut self, _mode: lpm013m1126c::BlinkMode) {}
+    pub async fn blink(&mut self, mode: lpm013m1126c::BlinkMode) {
+        let mut window = self.window.lock().unwrap();
+        window.blink_mode = mode;
+        window.update_window();
+    }
 
     pub async fn present(&mut self) {
-        let mut window = self.window.lock().await;
+        let mut window = self.window.lock().unwrap();
         window.present(&mut self.buffer)
     }
 }
 
-pub struct Backlight {}
+pub struct Backlight {
+    pub window: crate::window::WindowHandle,
+}
 
 impl Backlight {
-    pub fn on(&mut self) {}
+    pub fn on(&mut self) {
+        let mut window = self.window.lock().unwrap();
+        window.backlight_on = true;
+        window.update_window();
+    }
 
-    pub fn off(&mut self) {}
+    pub fn off(&mut self) {
+        let mut window = self.window.lock().unwrap();
+        window.backlight_on = false;
+        window.update_window();
+    }
 }

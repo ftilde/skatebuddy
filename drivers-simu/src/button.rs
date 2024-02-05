@@ -40,28 +40,30 @@ impl Button {
     }
     pub async fn wait_for_state(&mut self, l: Level) {
         loop {
-            let mut window = self.window.lock().await;
-            window.window.update();
-            let down = window.window.is_key_down(BUTTON_KEY);
-            let stop = match l {
-                Level::Low => down,
-                Level::High => !down,
-            };
+            {
+                let mut window = self.window.lock().unwrap();
+                window.window.update();
+                let down = window.window.is_key_down(BUTTON_KEY);
+                let stop = match l {
+                    Level::Low => down,
+                    Level::High => !down,
+                };
 
-            let now = Instant::now();
-            self.last_state = (
-                match down {
-                    true => Level::Low,
-                    false => Level::High,
-                },
-                now,
-            );
-            if stop {
-                match l {
-                    Level::Low => self.last_press = now,
-                    Level::High => self.last_release = now,
+                let now = Instant::now();
+                self.last_state = (
+                    match down {
+                        true => Level::Low,
+                        false => Level::High,
+                    },
+                    now,
+                );
+                if stop {
+                    match l {
+                        Level::Low => self.last_press = now,
+                        Level::High => self.last_release = now,
+                    }
+                    return;
                 }
-                return;
             }
 
             smol::Timer::after(POLL_PERIOD).await;
