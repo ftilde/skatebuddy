@@ -77,9 +77,7 @@ pub fn run(main: impl Main) -> ! {
         flash: flash::FlashRessources {},
         bat_state: battery::BatteryChargeState {},
         battery: battery::AsyncBattery,
-        button: button::Button {
-            window: window.clone(),
-        },
+        button: button::Button::new(window.clone()),
         backlight: display::Backlight {},
         lcd: display::Display::new(window.clone()),
         start_time: *time::BOOT,

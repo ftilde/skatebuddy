@@ -1,5 +1,9 @@
-use crate::time::Duration;
+use crate::{
+    time::{Duration, Instant},
+    window::WindowHandle,
+};
 
+#[derive(PartialEq, Eq, Copy, Clone)]
 pub enum Level {
     Low,
     High,
@@ -8,7 +12,10 @@ const PRESSED: Level = Level::Low;
 const RELEASED: Level = Level::High;
 
 pub struct Button {
-    pub window: crate::window::WindowHandle,
+    pub window: WindowHandle,
+    last_state: (Level, Instant),
+    last_press: Instant,
+    last_release: Instant,
 }
 
 //fn other(l: Level) -> Level {
@@ -22,6 +29,15 @@ const BUTTON_KEY: minifb::Key = minifb::Key::Space;
 const POLL_PERIOD: Duration = Duration::from_millis(10);
 
 impl Button {
+    pub fn new(window: WindowHandle) -> Self {
+        let now = Instant::now();
+        Self {
+            window,
+            last_state: (RELEASED, now),
+            last_press: now,
+            last_release: now,
+        }
+    }
     pub async fn wait_for_state(&mut self, l: Level) {
         loop {
             let mut window = self.window.lock().await;
@@ -32,7 +48,19 @@ impl Button {
                 Level::High => !down,
             };
 
+            let now = Instant::now();
+            self.last_state = (
+                match down {
+                    true => Level::Low,
+                    false => Level::High,
+                },
+                now,
+            );
             if stop {
+                match l {
+                    Level::Low => self.last_press = now,
+                    Level::High => self.last_release = now,
+                }
                 return;
             }
 
@@ -49,19 +77,11 @@ impl Button {
     }
 
     pub async fn wait_for_press(&mut self) -> Duration {
-        loop {
-            let mut window = self.window.lock().await;
-            window.window.update();
-
-            if window
-                .window
-                .is_key_pressed(BUTTON_KEY, minifb::KeyRepeat::No)
-            {
-                return Duration::from_millis(10); //TODO
-            }
-
-            smol::Timer::after(POLL_PERIOD).await;
+        if self.last_state.0 != PRESSED {
+            self.wait_for_down().await;
         }
+        self.wait_for_up().await;
+        self.last_press.elapsed()
     }
 
     //pub async fn wait_for_change(&mut self) -> Level {
