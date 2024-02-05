@@ -25,5 +25,7 @@ impl AsyncBattery {
         CurrentReading { micro_ampere: 0 }
     }
 
-    pub async fn reset(&self) {}
+    pub async fn reset(&self) {
+        println!("Simulated battery reset");
+    }
 }

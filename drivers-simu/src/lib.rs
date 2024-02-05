@@ -53,6 +53,7 @@ pub struct Context {
 }
 
 pub fn sys_reset() -> ! {
+    println!("Simulated reset. Exiting Simulator.");
     std::process::exit(0);
 }
 
