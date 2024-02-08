@@ -8,7 +8,7 @@ use micromath::F32Ext;
 
 pub async fn grid_menu<T: Copy, const N: usize>(
     ctx: &mut Context,
-    options: [(&'static str, T); N],
+    options: [(&str, T); N],
     button: T,
 ) -> T {
     ctx.lcd.on();

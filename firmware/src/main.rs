@@ -227,6 +227,7 @@ async fn app_menu(ctx: &mut Context) {
         Idle,
         Reset,
         Accel,
+        Files,
     }
 
     let options = [
@@ -236,6 +237,7 @@ async fn app_menu(ctx: &mut Context) {
         ("Idle", Some(App::Idle)),
         ("Reset", Some(App::Reset)),
         ("Accel", Some(App::Accel)),
+        ("Files", Some(App::Files)),
     ];
 
     loop {
@@ -246,6 +248,7 @@ async fn app_menu(ctx: &mut Context) {
                 App::BatInfo => apps::batinfo::battery_info(ctx).await,
                 App::Idle => apps::idle::idle(ctx).await,
                 App::Accel => apps::accel::accel(ctx).await,
+                App::Files => apps::files::files(ctx).await,
                 App::Reset => reset(ctx).await,
             }
         } else {
