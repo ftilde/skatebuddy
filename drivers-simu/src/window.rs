@@ -17,7 +17,7 @@ pub type WindowHandle = Arc<Mutex<Window>>;
 impl Window {
     pub fn new() -> Self {
         let window = minifb::Window::new(
-            "simu",
+            "skatebuddy-simulator",
             lpm013m1126c::WIDTH,
             lpm013m1126c::HEIGHT,
             Default::default(),
