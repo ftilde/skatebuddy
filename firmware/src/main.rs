@@ -241,7 +241,9 @@ async fn app_menu(ctx: &mut Context) {
     ];
 
     loop {
-        if let Some(app) = apps::menu::grid_menu(ctx, options.into(), None).await {
+        if let Some(app) =
+            apps::menu::paginated_grid_menu::<4, _, _>(ctx, options.as_slice(), None).await
+        {
             match app {
                 App::Draw => apps::draw::touch_playground(ctx).await,
                 App::ClockInfo => apps::clockinfo::clock_info(ctx).await,

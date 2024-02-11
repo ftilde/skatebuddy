@@ -1,7 +1,7 @@
 use embedded_graphics::prelude::Point;
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, defmt::Format, num_enum::TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, defmt::Format, num_enum::TryFromPrimitive)]
 pub enum EventKind {
     Press = 0,
     Release = 1,
@@ -9,7 +9,7 @@ pub enum EventKind {
 }
 
 #[repr(u8)]
-#[derive(Copy, Clone, Debug, defmt::Format, num_enum::TryFromPrimitive)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, defmt::Format, num_enum::TryFromPrimitive)]
 pub enum Gesture {
     None = 0,
     SwipeDown = 1,

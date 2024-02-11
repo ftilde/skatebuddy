@@ -9,7 +9,7 @@ use embedded_text::{alignment::HorizontalAlignment, style::TextBoxStyleBuilder, 
 
 use drivers::{
     lpm013m1126c::{BWConfig, Rgb111},
-    touch::{EventKind, TouchEvent},
+    touch::{EventKind, Gesture, TouchEvent},
 };
 
 pub struct ButtonStyle<'a, C> {
@@ -85,15 +85,18 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
     pub fn clicked(&mut self, evt: &TouchEvent) -> bool {
         let bounds = self.def.rect();
         if bounds.contains(evt.point()) {
-            match evt.kind {
-                EventKind::Press | EventKind::Hold => {
+            match (evt.kind, evt.gesture) {
+                (EventKind::Press | EventKind::Hold, _) => {
                     self.state = ButtonState::Down;
                 }
-                EventKind::Release => {
+                (EventKind::Release, Gesture::SinglePress) => {
                     if let ButtonState::Down = self.state {
                         self.state = ButtonState::Up;
                         return true;
                     }
+                }
+                (EventKind::Release, _) => {
+                    self.state = ButtonState::Up;
                 }
             }
         } else {

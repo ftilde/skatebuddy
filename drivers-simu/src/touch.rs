@@ -1,6 +1,9 @@
 use std::time::Duration;
 
 pub use drivers_shared::touch::*;
+use minifb::Key;
+
+use crate::window::Window;
 
 pub struct TouchRessources {
     pub window: crate::window::WindowHandle,
@@ -14,17 +17,58 @@ impl TouchRessources {
             hw: self,
             prev_down: false,
             prev_pos: (0.0, 0.0),
+            key_swipe_up: KeyState::new(Key::Up),
+            key_swipe_down: KeyState::new(Key::Down),
+            key_swipe_left: KeyState::new(Key::Left),
+            key_swipe_right: KeyState::new(Key::Right),
         }
     }
 }
 
 const POLL_PERIOD: Duration = Duration::from_millis(10);
 
+#[derive(Copy, Clone)]
+enum KeyPosition {
+    Up,
+    Down,
+}
+
+struct KeyState {
+    pos: KeyPosition,
+    key: Key,
+}
+
+impl KeyState {
+    fn new(key: Key) -> Self {
+        Self {
+            pos: KeyPosition::Up,
+            key,
+        }
+    }
+    fn pressed(&mut self, window: &Window) -> bool {
+        let new_pos = if window.window.is_key_down(self.key) {
+            KeyPosition::Down
+        } else {
+            KeyPosition::Up
+        };
+        let old_pos = self.pos;
+        self.pos = new_pos;
+        match (old_pos, new_pos) {
+            (KeyPosition::Down, KeyPosition::Up) => true,
+            _ => false,
+        }
+    }
+}
+
 pub struct Touch<'a> {
     #[allow(unused)]
     hw: &'a mut TouchRessources,
     prev_down: bool,
     prev_pos: (f32, f32),
+    key_swipe_up: KeyState,
+    key_swipe_down: KeyState,
+    key_swipe_left: KeyState,
+    key_swipe_right: KeyState,
 }
 impl<'a> Touch<'a> {
     pub async fn wait_for_event(&mut self) -> TouchEvent {
@@ -34,10 +78,11 @@ impl<'a> Touch<'a> {
                 window.window.update();
                 let down = window.window.get_mouse_down(minifb::MouseButton::Left);
 
+                let n_points = 1;
+
                 if let Some(pos) = window.window.get_mouse_pos(minifb::MouseMode::Clamp) {
                     let x = pos.0 as u8;
                     let y = pos.1 as u8;
-                    let n_points = 1;
                     let gesture = Gesture::SinglePress;
                     let prev_down = self.prev_down;
                     self.prev_down = down;
@@ -74,6 +119,23 @@ impl<'a> Touch<'a> {
                             }
                         }
                         (false, false) => {}
+                    }
+                }
+
+                for (k, gesture) in [
+                    (&mut self.key_swipe_left, Gesture::SwipeLeft),
+                    (&mut self.key_swipe_right, Gesture::SwipeRight),
+                    (&mut self.key_swipe_up, Gesture::SwipeUp),
+                    (&mut self.key_swipe_down, Gesture::SwipeDown),
+                ] {
+                    if k.pressed(&window) {
+                        return TouchEvent {
+                            gesture,
+                            n_points,
+                            kind: EventKind::Release,
+                            x: 0,
+                            y: 0,
+                        };
                     }
                 }
             }

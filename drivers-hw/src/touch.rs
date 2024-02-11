@@ -190,7 +190,10 @@ impl<'a> Touch<'a> {
     pub async fn wait_for_action(&mut self) -> TouchEvent {
         loop {
             let event = self.wait_for_event().await;
-            if let EventKind::Release | EventKind::Press = event.kind {
+            if EventKind::Press == event.kind {
+                return event;
+            }
+            if EventKind::Release == event.kind && event.gesture != Gesture::None {
                 return event;
             }
         }
