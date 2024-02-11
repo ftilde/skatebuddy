@@ -1,4 +1,5 @@
 use crate::{render_top_bar, ui::ButtonStyle, Context};
+use arrayvec::ArrayVec;
 use drivers::futures::{join, select};
 use drivers::lpm013m1126c::Rgb111;
 use embedded_graphics::prelude::{Point, Size};
@@ -6,9 +7,9 @@ use embedded_graphics::prelude::{Point, Size};
 #[cfg(target_arch = "arm")]
 use micromath::F32Ext;
 
-pub async fn grid_menu<T: Copy, const N: usize>(
+pub async fn grid_menu<T: Clone, const N: usize>(
     ctx: &mut Context,
-    options: [(&str, T); N],
+    options: ArrayVec<(&str, T), N>,
     button: T,
 ) -> T {
     ctx.lcd.on();
@@ -25,18 +26,21 @@ pub async fn grid_menu<T: Copy, const N: usize>(
     let y_offset = 16;
     let x_offset = y_offset / 2;
     let s = (drivers::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
-    let mut buttons = options.map(|(text, opt)| {
-        let x = i % cols;
-        let y = i / cols;
-        let btn = crate::ui::Button::new(crate::ui::ButtonDefinition {
-            position: Point::new(x * s + x_offset, y * s + y_offset),
-            size: Size::new(s as _, s as _),
-            style: &button_style,
-            text,
-        });
-        i += 1;
-        (btn, opt)
-    });
+    let mut buttons = options
+        .into_iter()
+        .map(|(text, opt)| {
+            let x = i % cols;
+            let y = i / cols;
+            let btn = crate::ui::Button::new(crate::ui::ButtonDefinition {
+                position: Point::new(x * s + x_offset, y * s + y_offset),
+                size: Size::new(s as _, s as _),
+                style: &button_style,
+                text,
+            });
+            i += 1;
+            (btn, opt)
+        })
+        .collect::<ArrayVec<_, N>>();
 
     'outer: loop {
         ctx.lcd.fill(Rgb111::black());
@@ -58,7 +62,7 @@ pub async fn grid_menu<T: Copy, const N: usize>(
                 crate::println!("BTN: {:?}", e);
                 for (btn, app) in &mut buttons {
                     if btn.clicked(&e) {
-                        break 'outer *app;
+                        break 'outer app.clone();
                     }
                 }
             }

@@ -210,7 +210,7 @@ async fn clock(ctx: &mut Context) {
 }
 
 async fn reset(ctx: &mut Context) {
-    let options = [("Really Reset", true), ("Back", false)];
+    let options = [("Really Reset", true), ("Back", false)].into();
 
     if apps::menu::grid_menu(ctx, options, false).await {
         ctx.lcd.clear().await;
@@ -241,7 +241,7 @@ async fn app_menu(ctx: &mut Context) {
     ];
 
     loop {
-        if let Some(app) = apps::menu::grid_menu(ctx, options, None).await {
+        if let Some(app) = apps::menu::grid_menu(ctx, options.into(), None).await {
             match app {
                 App::Draw => apps::draw::touch_playground(ctx).await,
                 App::ClockInfo => apps::clockinfo::clock_info(ctx).await,

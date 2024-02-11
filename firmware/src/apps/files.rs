@@ -7,7 +7,11 @@ pub async fn files(ctx: &mut Context) {
     ctx.flash
         .with_fs(|fs| {
             fs.create_dir_all(b"/test_dir/t1\0".try_into().unwrap())?;
-            fs.create_dir_all(b"/test_dir/t2\0".try_into().unwrap())
+            fs.create_dir_all(b"/test_dir/t2\0".try_into().unwrap())?;
+            fs.write(b"/test_dir/hello.txt\0".try_into().unwrap(), b"hello")?;
+            fs.write(b"/test_dir/world.txt\0".try_into().unwrap(), b"world")?;
+            fs.write(b"/test_dir/empty.txt\0".try_into().unwrap(), b"")?;
+            Ok(())
         })
         .await
         .unwrap();
@@ -20,7 +24,6 @@ pub async fn files(ctx: &mut Context) {
                     let mut o = arrayvec::ArrayVec::new();
                     for f in dir_it {
                         let f = f.unwrap();
-                        crate::println!("{}", f.path().as_ref());
                         if f.file_name() == "." || f.path().as_ref() == ".." {
                             continue;
                         }
@@ -34,15 +37,12 @@ pub async fn files(ctx: &mut Context) {
             .await
             .unwrap();
 
-        let options: [_; 4] = core::array::from_fn(|i| {
-            if let Some(f) = options.get(i) {
-                (f.file_name().as_ref(), Some(f))
-            } else {
-                ("", None)
-            }
-        });
+        let options: arrayvec::ArrayVec<_, 4> = options
+            .iter()
+            .map(|f| (f.file_name().as_ref(), Some(f)))
+            .collect();
         loop {
-            if let Some(f) = crate::apps::menu::grid_menu(ctx, options, None).await {
+            if let Some(f) = crate::apps::menu::grid_menu(ctx, options.clone(), None).await {
                 if f.metadata().is_dir() {
                     current_dir = if f.file_name() == ".." {
                         crate::println!("{}", f.path().parent().unwrap().as_ref());
