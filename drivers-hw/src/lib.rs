@@ -59,6 +59,9 @@ pub async fn wait_display_event() -> DisplayEvent {
     e
 }
 
+pub type TWI0 = TWISPI0;
+pub type TWI1 = TWISPI1;
+
 pub struct Context {
     pub flash: flash::FlashRessources,
     pub bat_state: battery::BatteryChargeState,
@@ -72,8 +75,8 @@ pub struct Context {
     pub mag: mag::MagRessources,
     pub touch: touch::TouchRessources,
     pub accel: accel::AccelRessources,
-    pub twi0: TWISPI0,
-    pub twi1: TWISPI1,
+    pub twi0: TWI0,
+    pub twi1: TWI1,
 }
 
 async fn init(spawner: embassy_executor::Spawner) -> Context {

@@ -1,6 +1,53 @@
-use littlefs2::path::PathBuf;
+use littlefs2::{
+    fs::DirEntry,
+    path::{Path, PathBuf},
+};
 
 use crate::Context;
+
+use super::menu::{MenuItem, MenuSelection};
+
+struct FileList<'a> {
+    dir: &'a Path,
+    flash: &'a mut drivers::flash::FlashRessources,
+}
+
+impl<'a, const N: usize> super::menu::Paginated<N> for FileList<'a> {
+    type Item = littlefs2::fs::DirEntry;
+
+    async fn access(&mut self, i: usize) -> arrayvec::ArrayVec<Self::Item, N> {
+        self.flash
+            .with_fs(|fs| {
+                fs.read_dir_and_then(self.dir, |dir_it| {
+                    let filtered = dir_it.filter_map(|f| {
+                        let f = f.unwrap();
+                        if f.file_name() == "." || f.path().as_ref() == ".." {
+                            None
+                        } else {
+                            Some(f)
+                        }
+                    });
+                    let page = filtered.skip(i * N).take(N);
+                    Ok(arrayvec::ArrayVec::from_iter(page))
+                })
+            })
+            .await
+            .unwrap()
+    }
+
+    async fn num_pages(&mut self) -> usize {
+        self.flash
+            .with_fs(|fs| fs.read_dir_and_then(self.dir, |dir_it| Ok(dir_it.count().div_ceil(N))))
+            .await
+            .unwrap()
+    }
+}
+
+impl MenuItem for DirEntry {
+    fn button_text(&self) -> &str {
+        self.file_name().as_ref()
+    }
+}
 
 pub async fn files(ctx: &mut Context) {
     //TODO use cstring literals when rust 1.77 is out
@@ -17,32 +64,23 @@ pub async fn files(ctx: &mut Context) {
         .unwrap();
     let mut current_dir: PathBuf = b"\0".into();
     'outer: loop {
-        let options: arrayvec::ArrayVec<_, 4> = ctx
-            .flash
-            .with_fs(|fs| {
-                fs.read_dir_and_then(&current_dir, |dir_it| {
-                    let mut o = arrayvec::ArrayVec::new();
-                    for f in dir_it {
-                        let f = f.unwrap();
-                        if f.file_name() == "." || f.path().as_ref() == ".." {
-                            continue;
-                        }
-                        if o.try_push(f).is_err() {
-                            break;
-                        }
-                    }
-                    Ok(o)
-                })
-            })
-            .await
-            .unwrap();
-
-        let options: arrayvec::ArrayVec<_, 4> = options
-            .iter()
-            .map(|f| (f.file_name().as_ref(), Some(f)))
-            .collect();
         loop {
-            if let Some(f) = crate::apps::menu::grid_menu(ctx, options.clone(), None).await {
+            let options = FileList {
+                dir: &current_dir,
+                flash: &mut ctx.flash,
+            };
+
+            if let MenuSelection::Item(f) = crate::apps::menu::paginated_grid_menu::<4, _, _>(
+                &mut ctx.touch,
+                &mut ctx.twi0,
+                &mut ctx.button,
+                &mut ctx.lcd,
+                &mut ctx.battery,
+                &mut ctx.bat_state,
+                options,
+            )
+            .await
+            {
                 if f.metadata().is_dir() {
                     current_dir = if f.file_name() == ".." {
                         crate::println!("{}", f.path().parent().unwrap().as_ref());

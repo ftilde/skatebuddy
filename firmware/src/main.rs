@@ -231,18 +231,27 @@ async fn app_menu(ctx: &mut Context) {
     }
 
     let options = [
-        ("Draw", Some(App::Draw)),
-        ("Clock", Some(App::ClockInfo)),
-        ("Bat", Some(App::BatInfo)),
-        ("Idle", Some(App::Idle)),
-        ("Reset", Some(App::Reset)),
-        ("Accel", Some(App::Accel)),
-        ("Files", Some(App::Files)),
+        ("Draw", App::Draw),
+        ("Clock", App::ClockInfo),
+        ("Bat", App::BatInfo),
+        ("Idle", App::Idle),
+        ("Reset", App::Reset),
+        ("Accel", App::Accel),
+        ("Files", App::Files),
     ];
 
     loop {
-        if let Some(app) =
-            apps::menu::paginated_grid_menu::<4, _, _>(ctx, options.as_slice(), None).await
+        if let apps::menu::MenuSelection::Item((_, app)) =
+            apps::menu::paginated_grid_menu::<4, _, _>(
+                &mut ctx.touch,
+                &mut ctx.twi0,
+                &mut ctx.button,
+                &mut ctx.lcd,
+                &mut ctx.battery,
+                &mut ctx.bat_state,
+                options.as_slice(),
+            )
+            .await
         {
             match app {
                 App::Draw => apps::draw::touch_playground(ctx).await,

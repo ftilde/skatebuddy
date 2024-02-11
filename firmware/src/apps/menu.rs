@@ -74,37 +74,51 @@ pub async fn grid_menu<T: Clone, const N: usize>(
 pub trait Paginated<const N: usize> {
     type Item;
 
-    fn access(&self, i: usize) -> ArrayVec<Self::Item, N>;
-    fn num_pages(&self) -> usize;
+    async fn access(&mut self, i: usize) -> ArrayVec<Self::Item, N>;
+    async fn num_pages(&mut self) -> usize;
+}
+
+pub trait MenuItem {
+    fn button_text(&self) -> &str;
+}
+
+impl<T> MenuItem for (&str, T) {
+    fn button_text(&self) -> &str {
+        self.0
+    }
 }
 
 impl<const N: usize, T: Clone> Paginated<N> for &[T] {
     type Item = T;
 
-    fn access(&self, i: usize) -> ArrayVec<Self::Item, N> {
+    async fn access(&mut self, i: usize) -> ArrayVec<Self::Item, N> {
         self[(N * i)..(N * (i + 1)).min(self.len())]
             .iter()
             .cloned()
             .collect()
     }
 
-    fn num_pages(&self) -> usize {
+    async fn num_pages(&mut self) -> usize {
         self.len().div_ceil(N)
     }
 }
 
-pub async fn paginated_grid_menu<
-    'a,
-    const N: usize,
-    T: Clone,
-    P: 'a + Paginated<N, Item = (&'a str, T)>,
->(
-    ctx: &mut Context,
-    options: P,
-    button: T,
-) -> T {
-    ctx.lcd.on();
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+pub enum MenuSelection<T> {
+    HardwareButton,
+    Item(T),
+}
+
+pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginated<N, Item = T>>(
+    touch: &mut drivers::touch::TouchRessources,
+    twi0: &mut drivers::TWI0,
+    button: &mut drivers::button::Button,
+    lcd: &mut drivers::display::Display,
+    battery: &mut drivers::battery::AsyncBattery,
+    bat_state: &mut drivers::battery::BatteryChargeState,
+    mut options: P,
+) -> MenuSelection<T> {
+    lcd.on();
+    let mut touch = touch.enabled(twi0).await;
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
@@ -112,7 +126,7 @@ pub async fn paginated_grid_menu<
         font: &embedded_graphics::mono_font::ascii::FONT_10X20,
     };
 
-    assert!(options.num_pages() > 0);
+    assert!(options.num_pages().await > 0);
     let mut page = 0;
 
     'outer: loop {
@@ -121,17 +135,18 @@ pub async fn paginated_grid_menu<
         let y_offset = 16;
         let x_offset = y_offset / 2;
         let s = (drivers::lpm013m1126c::WIDTH as i32 - 2 * x_offset) / cols;
-        let mut buttons = options
-            .access(page)
-            .into_iter()
-            .map(|(text, opt)| {
+        let page_data = options.access(page).await;
+
+        let mut buttons = page_data
+            .iter()
+            .map(|opt| {
                 let x = i % cols;
                 let y = i / cols;
                 let btn = crate::ui::Button::new(crate::ui::ButtonDefinition {
                     position: Point::new(x * s + x_offset, y * s + y_offset),
                     size: Size::new(s as _, s as _),
                     style: &button_style,
-                    text,
+                    text: opt.button_text(),
                 });
                 i += 1;
                 (btn, opt)
@@ -139,26 +154,26 @@ pub async fn paginated_grid_menu<
             .collect::<ArrayVec<_, N>>();
 
         'newpage: loop {
-            ctx.lcd.fill(Rgb111::black());
-            render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
+            lcd.fill(Rgb111::black());
+            render_top_bar(lcd, &battery, bat_state).await;
 
             for (btn, _) in &buttons {
-                btn.render(&mut *ctx.lcd);
+                btn.render(&mut **lcd);
             }
 
             let ((), evt) = join::join(
-                ctx.lcd.present(),
-                select::select(ctx.button.wait_for_press(), touch.wait_for_action()),
+                lcd.present(),
+                select::select(button.wait_for_press(), touch.wait_for_action()),
             )
             .await;
 
             match evt {
-                select::Either::First(_) => break 'outer button,
+                select::Either::First(_) => break 'outer MenuSelection::HardwareButton,
                 select::Either::Second(e) => {
                     crate::println!("BTN: {:?}", e);
                     for (btn, app) in &mut buttons {
                         if btn.clicked(&e) {
-                            break 'outer app.clone();
+                            break 'outer MenuSelection::Item(app.clone());
                         }
                     }
 
@@ -169,7 +184,7 @@ pub async fn paginated_grid_menu<
                                 break 'newpage;
                             }
                             Gesture::SwipeUp | Gesture::SwipeLeft => {
-                                page = (page + 1).min(options.num_pages() - 1);
+                                page = (page + 1).min(options.num_pages().await - 1);
                                 break 'newpage;
                             }
                             _ => {}
