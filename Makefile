@@ -5,7 +5,7 @@ DISABLE_DEBUG_SCRIPT=./disable_debug_interface.sh
 all: ${ELF}
 
 ${ELF}:
-	pushd firmware; cargo build --release; popd
+	cd firmware; cargo build --release
 
 .PHONY: flash ${ELF} simu
 
