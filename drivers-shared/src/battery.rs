@@ -9,7 +9,7 @@ pub struct Reading {
     pub raw: u32,
 }
 
-const FULL_VOLTAGE_VAL: f32 = 0.3144;
+pub const FULL_VOLTAGE_VAL: f32 = 0.3144;
 
 impl Reading {
     pub fn voltage(&self) -> f32 {

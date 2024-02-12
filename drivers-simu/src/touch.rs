@@ -3,7 +3,7 @@ use std::time::Duration;
 pub use drivers_shared::touch::*;
 use minifb::Key;
 
-use crate::window::Window;
+use crate::util::KeyState;
 
 pub struct TouchRessources {
     pub window: crate::window::WindowHandle,
@@ -26,39 +26,6 @@ impl TouchRessources {
 }
 
 const POLL_PERIOD: Duration = Duration::from_millis(10);
-
-#[derive(Copy, Clone)]
-enum KeyPosition {
-    Up,
-    Down,
-}
-
-struct KeyState {
-    pos: KeyPosition,
-    key: Key,
-}
-
-impl KeyState {
-    fn new(key: Key) -> Self {
-        Self {
-            pos: KeyPosition::Up,
-            key,
-        }
-    }
-    fn pressed(&mut self, window: &Window) -> bool {
-        let new_pos = if window.window.is_key_down(self.key) {
-            KeyPosition::Down
-        } else {
-            KeyPosition::Up
-        };
-        let old_pos = self.pos;
-        self.pos = new_pos;
-        match (old_pos, new_pos) {
-            (KeyPosition::Down, KeyPosition::Up) => true,
-            _ => false,
-        }
-    }
-}
 
 pub struct Touch<'a> {
     #[allow(unused)]

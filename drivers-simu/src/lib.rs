@@ -4,9 +4,15 @@ pub mod button;
 pub mod display;
 pub mod flash;
 pub mod gps;
+mod util;
 use std::sync::Arc;
 
 pub use drivers_shared::lpm013m1126c;
+use once_cell::sync::Lazy;
+use smol::{
+    channel::{Receiver, Sender},
+    LocalExecutor,
+};
 pub mod futures;
 pub mod mag;
 pub mod time;
@@ -27,9 +33,14 @@ pub enum DisplayEvent {
 //    DISPLAY_EVENT.signal(event);
 //}
 
+static DISPLAY_EVENT_PIPE: Lazy<(Sender<DisplayEvent>, Receiver<DisplayEvent>)> =
+    Lazy::new(|| smol::channel::bounded(1));
+
+async fn signal_display_event(evt: DisplayEvent) {
+    DISPLAY_EVENT_PIPE.0.send(evt).await.unwrap()
+}
 pub async fn wait_display_event() -> DisplayEvent {
-    //TODO
-    smol::future::pending().await
+    DISPLAY_EVENT_PIPE.1.recv().await.unwrap()
 }
 
 pub struct TWI0;
@@ -72,12 +83,13 @@ impl<F: core::future::Future<Output = Never> + 'static, C: FnOnce(Context) -> F 
 }
 
 pub fn run(main: impl Main) -> ! {
+    let executor = LocalExecutor::new();
     let window = Arc::new(std::sync::Mutex::new(window::Window::new()));
 
     let context = Context {
         flash: flash::FlashRessources::new(),
         bat_state: battery::BatteryChargeState {},
-        battery: battery::AsyncBattery,
+        battery: battery::AsyncBattery::new(&executor, window.clone()),
         button: button::Button::new(window.clone()),
         backlight: display::Backlight {
             window: window.clone(),
@@ -92,6 +104,6 @@ pub fn run(main: impl Main) -> ! {
         twi0: TWI0,
         twi1: TWI1,
     };
-    let _ = smol::block_on(main.build(context));
+    let _ = smol::block_on(executor.run(main.build(context)));
     panic!("Main should never return");
 }
