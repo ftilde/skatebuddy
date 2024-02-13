@@ -127,7 +127,13 @@ enum BatteryCommand {
     Reset,
 }
 
-const ASYNC_BATTERY_PERIOD: Duration = Duration::from_secs(20 * 60);
+fn async_bat_wait_period(state: ChargeState) -> Duration {
+    match state {
+        ChargeState::Full => Duration::from_secs(60 * 60),
+        ChargeState::Charging => Duration::from_secs(60),
+        ChargeState::Draining => Duration::from_secs(10 * 60),
+    }
+}
 
 #[embassy_executor::task]
 async fn accurate_battery_task(mut battery: Battery, mut charge_state: BatteryChargeState) {
@@ -137,13 +143,17 @@ async fn accurate_battery_task(mut battery: Battery, mut charge_state: BatteryCh
         let reading = battery.read_accurate().await;
         LAST_ASYNC_READING.store(reading.raw, Ordering::Relaxed);
         crate::signal_display_event(crate::DisplayEvent::NewBatData);
+        let state = charge_state.read();
+        LAST_CHARGE_STATE.store(state as u8, Ordering::Relaxed);
 
         let current_estimator = CurrentEstimator::init(reading);
 
-        let mut ticker = embassy_time::Ticker::every(ASYNC_BATTERY_PERIOD);
+        let mut wait_duration = async_bat_wait_period(state);
+
         loop {
+            let timer = embassy_time::Timer::after(wait_duration);
             if let embassy_futures::select::Either3::Second(cmd) = embassy_futures::select::select3(
-                ticker.next(),
+                timer,
                 ASYNC_BATTERY_SIG.wait(),
                 charge_state.wait_change(),
             )
@@ -163,6 +173,8 @@ async fn accurate_battery_task(mut battery: Battery, mut charge_state: BatteryCh
             let state = charge_state.read();
             LAST_CHARGE_STATE.store(state as u8, Ordering::Relaxed);
             crate::signal_display_event(crate::DisplayEvent::NewBatData);
+
+            wait_duration = async_bat_wait_period(state);
         }
     }
 }
