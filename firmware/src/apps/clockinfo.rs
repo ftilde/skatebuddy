@@ -16,7 +16,7 @@ pub async fn clock_info(ctx: &mut Context) {
     //ctx.backlight.off();
     loop {
         ctx.lcd.fill(Rgb111::black());
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
+        render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let now = ctx.start_time.elapsed();
 

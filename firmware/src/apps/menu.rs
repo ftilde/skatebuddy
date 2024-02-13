@@ -45,7 +45,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
 
     'outer: loop {
         ctx.lcd.fill(Rgb111::black());
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
+        render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         for (btn, _) in &buttons {
             btn.render(&mut *ctx.lcd);
@@ -114,7 +114,6 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
     button: &mut drivers::button::Button,
     lcd: &mut drivers::display::Display,
     battery: &mut drivers::battery::AsyncBattery,
-    bat_state: &mut drivers::battery::BatteryChargeState,
     mut options: P,
 ) -> MenuSelection<T> {
     lcd.on();
@@ -155,7 +154,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
 
         'newpage: loop {
             lcd.fill(Rgb111::black());
-            render_top_bar(lcd, &battery, bat_state).await;
+            render_top_bar(lcd, &battery).await;
 
             for (btn, _) in &buttons {
                 btn.render(&mut **lcd);

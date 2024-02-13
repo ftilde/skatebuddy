@@ -1,4 +1,4 @@
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 
 use super::hardware::bat as hw;
 use embassy_nrf::{
@@ -40,6 +40,14 @@ impl BatteryChargeState {
         } else {
             ChargeState::Draining
         }
+    }
+
+    pub async fn wait_change(&mut self) {
+        embassy_futures::select::select(
+            self.charge_port_pin.wait_for_any_edge(),
+            self.charge_complete_pin.wait_for_any_edge(),
+        )
+        .await;
     }
 }
 
@@ -108,6 +116,7 @@ impl Battery {
 static LAST_ASYNC_READING: AtomicU32 = AtomicU32::new(0);
 static LAST_ASYNC_CURRENT: AtomicU32 = AtomicU32::new(0);
 static LAST_ASYNC_CURRENT_STD: AtomicU32 = AtomicU32::new(0);
+static LAST_CHARGE_STATE: AtomicU8 = AtomicU8::new(ChargeState::Draining as u8);
 
 static ASYNC_BATTERY_SIG: embassy_sync::signal::Signal<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -121,7 +130,7 @@ enum BatteryCommand {
 const ASYNC_BATTERY_PERIOD: Duration = Duration::from_secs(20 * 60);
 
 #[embassy_executor::task]
-async fn accurate_battery_task(mut battery: Battery) {
+async fn accurate_battery_task(mut battery: Battery, mut charge_state: BatteryChargeState) {
     loop {
         LAST_ASYNC_CURRENT.store(0, Ordering::Relaxed);
         LAST_ASYNC_CURRENT_STD.store(u32::MAX, Ordering::Relaxed);
@@ -133,8 +142,12 @@ async fn accurate_battery_task(mut battery: Battery) {
 
         let mut ticker = embassy_time::Ticker::every(ASYNC_BATTERY_PERIOD);
         loop {
-            if let embassy_futures::select::Either::Second(cmd) =
-                embassy_futures::select::select(ticker.next(), ASYNC_BATTERY_SIG.wait()).await
+            if let embassy_futures::select::Either3::Second(cmd) = embassy_futures::select::select3(
+                ticker.next(),
+                ASYNC_BATTERY_SIG.wait(),
+                charge_state.wait_change(),
+            )
+            .await
             {
                 ASYNC_BATTERY_SIG.reset();
                 let BatteryCommand::Reset = cmd;
@@ -147,6 +160,8 @@ async fn accurate_battery_task(mut battery: Battery) {
             let std = current_estimator.deviation();
             LAST_ASYNC_CURRENT.store(current.micro_ampere, Ordering::Relaxed);
             LAST_ASYNC_CURRENT_STD.store(std.micro_ampere, Ordering::Relaxed);
+            let state = charge_state.read();
+            LAST_CHARGE_STATE.store(state as u8, Ordering::Relaxed);
             crate::signal_display_event(crate::DisplayEvent::NewBatData);
         }
     }
@@ -155,8 +170,14 @@ async fn accurate_battery_task(mut battery: Battery) {
 pub struct AsyncBattery;
 
 impl AsyncBattery {
-    pub(crate) fn new(spawner: &embassy_executor::Spawner, battery: Battery) -> Self {
-        spawner.spawn(accurate_battery_task(battery)).unwrap();
+    pub(crate) fn new(
+        spawner: &embassy_executor::Spawner,
+        battery: Battery,
+        charge_state: BatteryChargeState,
+    ) -> Self {
+        spawner
+            .spawn(accurate_battery_task(battery, charge_state))
+            .unwrap();
         Self
     }
 
@@ -176,6 +197,13 @@ impl AsyncBattery {
         CurrentReading {
             micro_ampere: LAST_ASYNC_CURRENT_STD.load(Ordering::Relaxed),
         }
+    }
+
+    pub fn state(&self) -> ChargeState {
+        <ChargeState as drivers_shared::num_enum::TryFromPrimitive>::try_from_primitive(
+            LAST_CHARGE_STATE.load(Ordering::Relaxed),
+        )
+        .unwrap()
     }
 
     pub async fn reset(&self) {

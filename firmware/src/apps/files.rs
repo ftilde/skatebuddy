@@ -76,7 +76,6 @@ pub async fn files(ctx: &mut Context) {
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,
-                &mut ctx.bat_state,
                 options,
             )
             .await

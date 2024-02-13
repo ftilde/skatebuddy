@@ -19,7 +19,7 @@ pub async fn battery_info(ctx: &mut Context) {
 
         ctx.lcd.fill(Rgb111::black());
 
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
+        render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let mut w = TextWriter::new(&mut ctx.lcd, sl).y(20);
 

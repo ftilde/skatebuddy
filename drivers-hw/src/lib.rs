@@ -64,7 +64,6 @@ pub type TWI1 = TWISPI1;
 
 pub struct Context {
     pub flash: flash::FlashRessources,
-    pub bat_state: battery::BatteryChargeState,
     pub battery: battery::AsyncBattery,
     pub button: button::Button,
     pub backlight: display::Backlight,
@@ -94,7 +93,8 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     //dump_peripheral_regs();
 
     let battery = battery::Battery::new(p.SAADC, p.P0_03);
-    let battery = battery::AsyncBattery::new(&spawner, battery);
+    let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
+    let battery = battery::AsyncBattery::new(&spawner, battery, bat_state);
 
     // Keep hrm in reset to power it off
     let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
@@ -113,9 +113,6 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     let flash =
         flash::FlashRessources::new(p.QSPI, p.P0_14, p.P0_16, p.P0_15, p.P0_13, p.P1_10, p.P1_11)
             .await;
-
-    //let mut battery = battery::AccurateBatteryReader::new(&spawner, battery);
-    let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
 
     let button = button::Button::new(p.P0_17);
 
@@ -149,7 +146,6 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     Context {
         backlight,
         button,
-        bat_state,
         battery,
         //gps,
         flash,

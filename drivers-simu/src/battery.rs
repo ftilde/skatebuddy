@@ -1,18 +1,13 @@
-use std::{sync::atomic::AtomicU32, time::Duration};
+use std::{
+    sync::atomic::{AtomicU32, AtomicU8, Ordering},
+    time::Duration,
+};
 
 pub use drivers_shared::battery::*;
 use minifb::Key;
 use smol::LocalExecutor;
 
 use crate::{util::KeyState, window::WindowHandle};
-
-pub struct BatteryChargeState {}
-
-impl BatteryChargeState {
-    pub fn read(&mut self) -> ChargeState {
-        ChargeState::Full
-    }
-}
 
 pub fn voltage_to_reading(voltage: f32) -> Reading {
     let raw = (voltage / (4.2 / 16384.0 / FULL_VOLTAGE_VAL / (1 << 16) as f32)) as u32;
@@ -21,22 +16,15 @@ pub fn voltage_to_reading(voltage: f32) -> Reading {
 const V_100: f32 = 4.2;
 const V_0: f32 = 3.3;
 
-//#[derive(Copy, Clone)]
-//enum Mode {
-//    Draining,
-//    Charging,
-//}
-
 pub struct AsyncBattery {
     _update_thread: smol::Task<()>,
 }
 
 static LATEST_READING: AtomicU32 = AtomicU32::new(0);
+static LAST_CHARGE_STATE: AtomicU8 = AtomicU8::new(ChargeState::Draining as u8);
+
 async fn update_reading(voltage: f32) {
-    LATEST_READING.store(
-        voltage_to_reading(voltage).raw,
-        std::sync::atomic::Ordering::SeqCst,
-    );
+    LATEST_READING.store(voltage_to_reading(voltage).raw, Ordering::SeqCst);
     crate::signal_display_event(crate::DisplayEvent::NewBatData).await;
 }
 
@@ -55,10 +43,19 @@ impl AsyncBattery {
                         window.window.update();
                         if key_drain.pressed(&mut window) {
                             voltage = (voltage - 0.1).max(V_0);
+                            LAST_CHARGE_STATE.store(ChargeState::Draining as u8, Ordering::SeqCst);
                             changed = true;
                         }
                         if key_charge.pressed(&mut window) {
                             voltage = (voltage + 0.1).min(V_100);
+                            LAST_CHARGE_STATE.store(
+                                if voltage == V_100 {
+                                    ChargeState::Full
+                                } else {
+                                    ChargeState::Charging
+                                } as u8,
+                                Ordering::SeqCst,
+                            );
                             changed = true;
                         }
                     }
@@ -72,7 +69,7 @@ impl AsyncBattery {
     }
     pub async fn read(&self) -> Reading {
         Reading {
-            raw: LATEST_READING.load(std::sync::atomic::Ordering::SeqCst),
+            raw: LATEST_READING.load(Ordering::SeqCst),
         }
     }
 
@@ -82,6 +79,13 @@ impl AsyncBattery {
 
     pub fn current_std(&self) -> CurrentReading {
         CurrentReading { micro_ampere: 0 }
+    }
+
+    pub fn state(&self) -> ChargeState {
+        <ChargeState as drivers_shared::num_enum::TryFromPrimitive>::try_from_primitive(
+            LAST_CHARGE_STATE.load(Ordering::Relaxed),
+        )
+        .unwrap()
     }
 
     pub async fn reset(&self) {

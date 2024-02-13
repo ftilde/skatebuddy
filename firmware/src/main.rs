@@ -45,11 +45,7 @@ use littlefs2::fs::Filesystem;
 use drivers::futures::select;
 use drivers::time::{Duration, Timer};
 
-async fn render_top_bar(
-    lcd: &mut drivers::display::Display,
-    bat: &drivers::battery::AsyncBattery,
-    bat_state: &mut drivers::battery::BatteryChargeState,
-) {
+async fn render_top_bar(lcd: &mut drivers::display::Display, bat: &drivers::battery::AsyncBattery) {
     let bw_config = BWConfig {
         off: Rgb111::black(),
         on: Rgb111::white(),
@@ -79,7 +75,7 @@ async fn render_top_bar(
     let bat = arrform!(
         4,
         "{}{:0>2}",
-        match bat_state.read() {
+        match bat.state() {
             drivers::battery::ChargeState::Full => 'F',
             drivers::battery::ChargeState::Charging => 'C',
             drivers::battery::ChargeState::Draining => 'D',
@@ -152,7 +148,7 @@ async fn clock(ctx: &mut Context) {
                 5,
                 "{: >3}%{}",
                 perc,
-                match ctx.bat_state.read() {
+                match ctx.battery.state() {
                     drivers::battery::ChargeState::Full => 'F',
                     drivers::battery::ChargeState::Charging => 'C',
                     drivers::battery::ChargeState::Draining => 'D',
@@ -248,7 +244,6 @@ async fn app_menu(ctx: &mut Context) {
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,
-                &mut ctx.bat_state,
                 options.as_slice(),
             )
             .await

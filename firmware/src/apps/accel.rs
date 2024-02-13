@@ -21,7 +21,7 @@ pub async fn accel(ctx: &mut Context) {
         let reading = accel.reading_nf().await;
 
         ctx.lcd.fill(Rgb111::black());
-        render_top_bar(&mut ctx.lcd, &ctx.battery, &mut ctx.bat_state).await;
+        render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let mut w = TextWriter::new(&mut ctx.lcd, sl).y(20);
         let _ = writeln!(w, "x: {}", reading.x);

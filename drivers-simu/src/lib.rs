@@ -48,7 +48,6 @@ pub struct TWI1;
 
 pub struct Context {
     pub flash: flash::FlashRessources,
-    pub bat_state: battery::BatteryChargeState,
     pub battery: battery::AsyncBattery,
     pub button: button::Button,
     pub backlight: display::Backlight,
@@ -88,7 +87,6 @@ pub fn run(main: impl Main) -> ! {
 
     let context = Context {
         flash: flash::FlashRessources::new(),
-        bat_state: battery::BatteryChargeState {},
         battery: battery::AsyncBattery::new(&executor, window.clone()),
         button: button::Button::new(window.clone()),
         backlight: display::Backlight {
