@@ -1,9 +1,9 @@
-use bitmap_font::TextStyle;
 use embedded_graphics::{
     mono_font::{MonoFont, MonoTextStyle},
+    pixelcolor::BinaryColor,
     prelude::*,
     primitives::Rectangle,
-    text::Text,
+    text::{renderer::TextRenderer, Text},
 };
 use embedded_text::{alignment::HorizontalAlignment, style::TextBoxStyleBuilder, TextBox};
 
@@ -106,15 +106,15 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
     }
 }
 
-pub struct TextWriter<'a> {
+pub struct TextWriter<'a, S> {
     pos: Point,
     line_start: i32,
     display: &'a mut drivers::display::Display,
-    style: TextStyle<'a>,
+    style: S,
 }
 
-impl<'a> TextWriter<'a> {
-    pub fn new(display: &'a mut drivers::display::Display, style: TextStyle<'a>) -> Self {
+impl<'a, S: TextRenderer<Color = BinaryColor> + Clone> TextWriter<'a, S> {
+    pub fn new(display: &'a mut drivers::display::Display, style: S) -> Self {
         Self {
             pos: Point::new(0, 0),
             line_start: 0,
@@ -140,7 +140,7 @@ impl<'a> TextWriter<'a> {
             on: Rgb111::white(),
         };
 
-        let mut new_pos = Text::new(text, self.pos, self.style)
+        let mut new_pos = Text::new(text, self.pos, self.style.clone())
             .draw(&mut self.display.binary(bw_config))
             .unwrap();
 
@@ -152,7 +152,7 @@ impl<'a> TextWriter<'a> {
     }
 }
 
-impl core::fmt::Write for TextWriter<'_> {
+impl<S: TextRenderer<Color = BinaryColor> + Clone> core::fmt::Write for TextWriter<'_, S> {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {
         self.write(s);
         Ok(())
