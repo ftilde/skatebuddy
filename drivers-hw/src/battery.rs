@@ -117,6 +117,7 @@ static LAST_ASYNC_READING: AtomicU32 = AtomicU32::new(0);
 static LAST_ASYNC_CURRENT: AtomicU32 = AtomicU32::new(0);
 static LAST_ASYNC_CURRENT_STD: AtomicU32 = AtomicU32::new(0);
 static LAST_CHARGE_STATE: AtomicU8 = AtomicU8::new(ChargeState::Draining as u8);
+static LAST_UPDATE_TIME: AtomicU32 = AtomicU32::new(0);
 
 static ASYNC_BATTERY_SIG: embassy_sync::signal::Signal<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
@@ -172,6 +173,7 @@ async fn accurate_battery_task(mut battery: Battery, mut charge_state: BatteryCh
             LAST_ASYNC_CURRENT_STD.store(std.micro_ampere, Ordering::Relaxed);
             let state = charge_state.read();
             LAST_CHARGE_STATE.store(state as u8, Ordering::Relaxed);
+            LAST_UPDATE_TIME.store(Instant::now().as_secs() as u32, Ordering::Relaxed);
             crate::signal_display_event(crate::DisplayEvent::NewBatData);
 
             wait_duration = async_bat_wait_period(state);
@@ -209,6 +211,10 @@ impl AsyncBattery {
         CurrentReading {
             micro_ampere: LAST_ASYNC_CURRENT_STD.load(Ordering::Relaxed),
         }
+    }
+
+    pub fn last_update(&self) -> Instant {
+        Instant::from_secs(LAST_UPDATE_TIME.load(Ordering::Relaxed) as u64)
     }
 
     pub fn state(&self) -> ChargeState {

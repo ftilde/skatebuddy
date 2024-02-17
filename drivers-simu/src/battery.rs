@@ -1,6 +1,6 @@
 use std::{
     sync::atomic::{AtomicU32, AtomicU8, Ordering},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub use drivers_shared::battery::*;
@@ -22,9 +22,14 @@ pub struct AsyncBattery {
 
 static LATEST_READING: AtomicU32 = AtomicU32::new(0);
 static LAST_CHARGE_STATE: AtomicU8 = AtomicU8::new(ChargeState::Draining as u8);
+static LAST_UPDATE_TIME: AtomicU32 = AtomicU32::new(0);
 
 async fn update_reading(voltage: f32) {
     LATEST_READING.store(voltage_to_reading(voltage).raw, Ordering::SeqCst);
+    LAST_UPDATE_TIME.store(
+        crate::time::BOOT.elapsed().as_secs() as u32,
+        Ordering::Relaxed,
+    );
     crate::signal_display_event(crate::DisplayEvent::NewBatData).await;
 }
 
@@ -79,6 +84,10 @@ impl AsyncBattery {
 
     pub fn current_std(&self) -> CurrentReading {
         CurrentReading { micro_ampere: 0 }
+    }
+
+    pub fn last_update(&self) -> Instant {
+        *crate::time::BOOT + Duration::from_secs(LAST_UPDATE_TIME.load(Ordering::Relaxed) as u64)
     }
 
     pub fn state(&self) -> ChargeState {

@@ -42,6 +42,7 @@ pub async fn battery_info(ctx: &mut Context) {
         } else {
             w.write("bootcount fail\n");
         }
+        let _ = writeln!(w, "UDP: {}s", ctx.battery.last_update().elapsed().as_secs());
 
         ctx.lcd.present().await;
 
