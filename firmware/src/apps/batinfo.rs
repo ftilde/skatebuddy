@@ -198,9 +198,10 @@ pub async fn battery_calibrate(ctx: &mut Context) {
                     |o| o.write(true).create(true).append(true),
                     &calinbration_file_path,
                     |file| {
+                        use littlefs2::io::Write;
                         let content =
                             arrform!(40, "{};{}\n", start.elapsed().as_secs(), read.voltage());
-                        file.write(content.as_bytes())
+                        file.write_all(content.as_bytes())
                     },
                 )
             })
