@@ -126,6 +126,7 @@ static ASYNC_BATTERY_SIG: embassy_sync::signal::Signal<
 
 enum BatteryCommand {
     Reset,
+    Update,
 }
 
 fn async_bat_wait_period(state: ChargeState) -> Duration {
@@ -161,8 +162,14 @@ async fn accurate_battery_task(mut battery: Battery, mut charge_state: BatteryCh
             .await
             {
                 ASYNC_BATTERY_SIG.reset();
-                let BatteryCommand::Reset = cmd;
-                break;
+                match cmd {
+                    BatteryCommand::Reset => {
+                        break;
+                    }
+                    BatteryCommand::Update => {
+                        // Nothing, just take a reading now
+                    }
+                }
             }
 
             let reading = battery.read_accurate().await;
@@ -226,6 +233,11 @@ impl AsyncBattery {
 
     pub async fn reset(&self) {
         ASYNC_BATTERY_SIG.signal(BatteryCommand::Reset);
+        embassy_futures::yield_now().await;
+    }
+
+    pub async fn force_update(&self) {
+        ASYNC_BATTERY_SIG.signal(BatteryCommand::Update);
         embassy_futures::yield_now().await;
     }
 }

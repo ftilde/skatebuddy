@@ -100,4 +100,9 @@ impl AsyncBattery {
     pub async fn reset(&self) {
         println!("Simulated battery reset");
     }
+
+    pub async fn force_update(&self) {
+        println!("Simulated forced bat read");
+        crate::signal_display_event(crate::DisplayEvent::NewBatData).await;
+    }
 }
