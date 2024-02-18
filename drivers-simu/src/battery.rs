@@ -72,7 +72,7 @@ impl AsyncBattery {
             }),
         }
     }
-    pub async fn read(&self) -> Reading {
+    pub fn read(&self) -> Reading {
         Reading {
             raw: LATEST_READING.load(Ordering::SeqCst),
         }

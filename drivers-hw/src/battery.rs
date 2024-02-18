@@ -202,7 +202,7 @@ impl AsyncBattery {
         Self
     }
 
-    pub async fn read(&self) -> Reading {
+    pub fn read(&self) -> Reading {
         Reading {
             raw: LAST_ASYNC_READING.load(Ordering::Relaxed),
         }

@@ -70,7 +70,7 @@ async fn render_top_bar(lcd: &mut drivers::display::Display, bat: &drivers::batt
         (arrform!(8, "??:??:??"), arrform!(5, "??.??"))
     };
 
-    let v = bat.read().await;
+    let v = bat.read();
 
     let bat = arrform!(
         4,
@@ -141,7 +141,7 @@ async fn clock(ctx: &mut Context) {
             let tiny_style =
                 TextStyle::new(&tiny_font, embedded_graphics::pixelcolor::BinaryColor::On);
 
-            let v = ctx.battery.read().await;
+            let v = ctx.battery.read();
             let perc = v.percentage() as i32;
 
             let bat = arrform!(

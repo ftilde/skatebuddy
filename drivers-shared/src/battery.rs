@@ -1,5 +1,5 @@
 #[repr(u8)]
-#[derive(Copy, Clone, num_enum::TryFromPrimitive)]
+#[derive(Copy, Clone, PartialEq, Eq, num_enum::TryFromPrimitive)]
 pub enum ChargeState {
     Full,
     Charging,
