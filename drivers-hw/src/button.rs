@@ -1,7 +1,9 @@
-use embassy_nrf::gpio::{Input, Level, Pull};
+use embassy_nrf::gpio::{Input, Pull};
 use embassy_time::{Duration, Instant, Timer};
 
 use super::hardware::btn as hw;
+
+pub use embassy_nrf::gpio::Level;
 
 const DEBOUNCE_TIME: Duration = Duration::from_millis(10);
 const PRESSED: Level = Level::Low;
@@ -31,7 +33,7 @@ impl Button {
         }
     }
 
-    fn state(&mut self) -> Level {
+    pub fn state(&mut self) -> Level {
         self.pin.get_level()
     }
 

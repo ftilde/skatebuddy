@@ -190,6 +190,9 @@ pub async fn battery_calibrate(ctx: &mut Context) {
         })
         .await
         .unwrap();
+
+    let mut next_update = Instant::now();
+    let update_period = Duration::from_secs(60);
     loop {
         let read = ctx.battery.read();
         ctx.flash
@@ -217,7 +220,7 @@ pub async fn battery_calibrate(ctx: &mut Context) {
                 return;
             }
             ChargeState::Draining => {
-                let _ = writeln!(w, "Do not unplug!");
+                let _ = writeln!(w, "Now wait for\nbattery to\nrun dry");
             }
         }
 
@@ -227,10 +230,26 @@ pub async fn battery_calibrate(ctx: &mut Context) {
 
         ctx.lcd.present().await;
 
-        match select::select(drivers::wait_display_event(), ctx.button.wait_for_press()).await {
-            select::Either::First(_) => {}
-            select::Either::Second(_) => {
-                return;
+        next_update += update_period;
+
+        {
+            let _touch = ctx.touch.enabled(&mut ctx.twi0).await;
+            let mut mag = ctx.mag.on(&mut ctx.twi1).await;
+            let _bl = ctx.backlight.on();
+            while next_update > Instant::now() {
+                if ctx.button.state() == drivers::button::Level::Low {
+                    ctx.button.wait_for_up().await;
+                    return;
+                }
+                drivers::futures::select::select(
+                    async {
+                        loop {
+                            drivers::futures::yield_now().await;
+                        }
+                    },
+                    mag.read(),
+                )
+                .await;
             }
         }
     }

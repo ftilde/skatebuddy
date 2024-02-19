@@ -59,15 +59,31 @@ pub struct Backlight {
 }
 
 impl Backlight {
-    pub fn on(&mut self) {
+    pub fn set_on(&mut self) {
         let mut window = self.window.lock().unwrap();
         window.backlight_on = true;
         window.update_window();
     }
 
-    pub fn off(&mut self) {
+    pub fn set_off(&mut self) {
         let mut window = self.window.lock().unwrap();
         window.backlight_on = false;
         window.update_window();
+    }
+
+    #[must_use]
+    pub fn on<'a>(&'a mut self) -> BacklightOn<'a> {
+        self.set_on();
+        BacklightOn { bl: self }
+    }
+}
+
+pub struct BacklightOn<'a> {
+    bl: &'a mut Backlight,
+}
+
+impl Drop for BacklightOn<'_> {
+    fn drop(&mut self) {
+        self.bl.set_off();
     }
 }

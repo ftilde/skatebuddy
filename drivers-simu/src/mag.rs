@@ -1,3 +1,5 @@
+use crate::time::{Duration, Timer};
+
 pub struct MagRessources {}
 
 type I2CInstance = crate::TWI1;
@@ -15,6 +17,7 @@ pub struct Mag<'a> {
 
 impl<'a> Mag<'a> {
     pub async fn read(&mut self) -> [u8; 7] {
+        Timer::after(Duration::from_millis(100)).await;
         [0, 1, 2, 3, 4, 5, 6]
     }
 }

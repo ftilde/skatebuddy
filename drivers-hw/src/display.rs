@@ -191,14 +191,20 @@ impl Backlight {
         self.pin.set_level(self.level);
     }
 
-    pub fn on(&mut self) {
+    pub fn set_on(&mut self) {
         self.level = Level::High;
         self.set();
     }
 
-    pub fn off(&mut self) {
+    pub fn set_off(&mut self) {
         self.level = Level::Low;
         self.set();
+    }
+
+    #[must_use]
+    pub fn on<'a>(&'a mut self) -> BacklightOn<'a> {
+        self.set_on();
+        BacklightOn { bl: self }
     }
 
     //pub fn toggle(&mut self) {
@@ -208,4 +214,14 @@ impl Backlight {
     //    };
     //    self.set();
     //}
+}
+
+pub struct BacklightOn<'a> {
+    bl: &'a mut Backlight,
+}
+
+impl Drop for BacklightOn<'_> {
+    fn drop(&mut self) {
+        self.bl.set_off();
+    }
 }

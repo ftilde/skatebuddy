@@ -37,7 +37,7 @@ static DISPLAY_EVENT_PIPE: Lazy<(Sender<DisplayEvent>, Receiver<DisplayEvent>)> 
     Lazy::new(|| smol::channel::bounded(1));
 
 async fn signal_display_event(evt: DisplayEvent) {
-    DISPLAY_EVENT_PIPE.0.send(evt).await.unwrap()
+    let _ = DISPLAY_EVENT_PIPE.0.try_send(evt);
 }
 pub async fn wait_display_event() -> DisplayEvent {
     DISPLAY_EVENT_PIPE.1.recv().await.unwrap()

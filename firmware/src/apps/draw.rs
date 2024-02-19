@@ -7,7 +7,7 @@ use embedded_graphics::prelude::*;
 
 pub async fn touch_playground(ctx: &mut Context) {
     ctx.lcd.on();
-    ctx.backlight.on();
+    let _bl = ctx.backlight.on();
 
     ctx.lcd.fill(Rgb111::white());
     ctx.lcd.present().await;
@@ -53,8 +53,6 @@ pub async fn touch_playground(ctx: &mut Context) {
 
         crate::println!("we done presenting");
     };
-
-    ctx.backlight.off();
 
     next
 }

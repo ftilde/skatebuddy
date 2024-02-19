@@ -38,6 +38,16 @@ impl Button {
             last_release: now,
         }
     }
+    pub fn state(&mut self) -> Level {
+        let mut window = self.window.lock().unwrap();
+        window.window.update();
+        let down = window.window.is_key_down(BUTTON_KEY);
+        match down {
+            true => Level::Low,
+            false => Level::High,
+        }
+    }
+
     pub async fn wait_for_state(&mut self, l: Level) {
         loop {
             {
