@@ -1,3 +1,4 @@
+use base64::Engine;
 use littlefs2::{
     fs::DirEntry,
     path::{Path, PathBuf},
@@ -93,11 +94,82 @@ pub async fn files(ctx: &mut Context) {
                     };
                     break;
                 } else {
-                    let l = f.metadata().len();
-                    crate::println!("len: {}", l);
+                    file_menu(ctx, f.path()).await;
                 }
             } else {
                 break 'outer;
+            }
+        }
+    }
+}
+
+pub async fn file_menu(ctx: &mut Context, path: &Path) {
+    #[derive(Copy, Clone)]
+    enum Opt {
+        Back,
+        Print,
+        Delete,
+    }
+
+    let options = [
+        ("Print", Opt::Print),
+        ("Delete", Opt::Delete),
+        ("Back", Opt::Back),
+    ];
+
+    loop {
+        match crate::apps::menu::paginated_grid_menu::<4, _, _>(
+            &mut ctx.touch,
+            &mut ctx.twi0,
+            &mut ctx.button,
+            &mut ctx.lcd,
+            &mut ctx.battery,
+            options.as_slice(),
+        )
+        .await
+        {
+            MenuSelection::HardwareButton | MenuSelection::Item((_, Opt::Back)) => {
+                return;
+            }
+            MenuSelection::Item((_, Opt::Print)) => {
+                let engine = base64::engine::GeneralPurpose::new(
+                    &base64::alphabet::STANDARD,
+                    base64::engine::GeneralPurposeConfig::new(),
+                );
+                ctx.flash
+                    .with_fs(|fs| {
+                        fs.open_file_and_then(path, |f| {
+                            let mut bytebuf = [0u8; 32];
+                            let mut base64buf = [0u8; 64];
+
+                            crate::println!("===== {}", path.as_ref());
+
+                            loop {
+                                let i = f.read(&mut bytebuf)?;
+                                if i == 0 {
+                                    break;
+                                }
+
+                                let i = engine.encode_slice(&bytebuf[..i], &mut base64buf).unwrap();
+                                let s = core::str::from_utf8(&base64buf[..i]).unwrap();
+                                crate::println!("{}", s);
+                            }
+                            crate::println!("=====");
+
+                            Ok(())
+                        })
+                    })
+                    .await
+                    .unwrap();
+            }
+            MenuSelection::Item((_, Opt::Delete)) => {
+                let options = [("Really Delete", true), ("Back", false)].into();
+
+                if crate::apps::menu::grid_menu(ctx, options, false).await {
+                    ctx.flash.with_fs(|fs| fs.remove(path)).await.unwrap();
+
+                    return;
+                }
             }
         }
     }
