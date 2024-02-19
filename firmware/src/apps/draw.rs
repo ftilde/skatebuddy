@@ -6,8 +6,8 @@ use drivers::touch::EventKind;
 use embedded_graphics::prelude::*;
 
 pub async fn touch_playground(ctx: &mut Context) {
-    ctx.lcd.on();
-    let _bl = ctx.backlight.on();
+    ctx.lcd.on().await;
+    let _bl = ctx.backlight.on().await;
 
     ctx.lcd.fill(Rgb111::white());
     ctx.lcd.present().await;

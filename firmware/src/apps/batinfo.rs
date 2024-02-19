@@ -41,7 +41,7 @@ pub async fn battery_info(ctx: &mut Context) {
         text: "Calibrate",
     });
 
-    ctx.lcd.on();
+    ctx.lcd.on().await;
     loop {
         let mua = ctx.battery.current();
         let mdev = ctx.battery.current_std();
@@ -113,7 +113,7 @@ pub async fn battery_calibrate(ctx: &mut Context) {
     let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
     let sl = MonoTextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
 
-    ctx.lcd.on();
+    ctx.lcd.on().await;
     // Wait for full
     loop {
         ctx.lcd.fill(Rgb111::black());
@@ -194,7 +194,11 @@ pub async fn battery_calibrate(ctx: &mut Context) {
     let mut next_update = Instant::now();
     let update_period = Duration::from_secs(60);
     loop {
+        // "Synchronously" read the battery
+        ctx.battery.force_update().await;
+        drivers::wait_display_event().await;
         let read = ctx.battery.read();
+
         ctx.flash
             .with_fs(|fs| {
                 fs.open_file_with_options_and_then(
@@ -235,7 +239,7 @@ pub async fn battery_calibrate(ctx: &mut Context) {
         {
             let _touch = ctx.touch.enabled(&mut ctx.twi0).await;
             let mut mag = ctx.mag.on(&mut ctx.twi1).await;
-            let _bl = ctx.backlight.on();
+            let _bl = ctx.backlight.on().await;
             while next_update > Instant::now() {
                 if ctx.button.state() == drivers::button::Level::Low {
                     ctx.button.wait_for_up().await;

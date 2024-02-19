@@ -13,7 +13,8 @@ use embedded_hal::digital::v2::PinState;
 use super::lpm013m1126c;
 
 enum ExcominCmd {
-    Run(u64),
+    Run,
+    SetFreq(u64),
     Pause,
 }
 
@@ -33,13 +34,25 @@ async fn drive_ext_com_in(pin: embassy_nrf::peripherals::P0_06) {
     //Minimum time according to data sheet
     let wait_period_high = Duration::from_micros(2);
 
+    let mut run = true;
     loop {
-        let freq_hz;
+        let mut freq_hz = DEFAULT_EXCOMIN_FREQ;
         let v = EXTCOMIN_SIG.wait().await;
         EXTCOMIN_SIG.reset();
         match v {
-            ExcominCmd::Run(f) => freq_hz = f,
-            ExcominCmd::Pause => continue,
+            ExcominCmd::Run => {
+                run = true;
+            }
+            ExcominCmd::SetFreq(f) => {
+                freq_hz = f;
+                if !run {
+                    continue;
+                }
+            }
+            ExcominCmd::Pause => {
+                run = false;
+                continue;
+            }
         };
 
         let period_us = 1_000_000 / freq_hz;
@@ -79,14 +92,16 @@ impl core::ops::DerefMut for Display {
 }
 
 impl Display {
-    pub fn on(&mut self) {
+    pub async fn on(&mut self) {
         self.disp.set_high();
-        EXTCOMIN_SIG.signal(ExcominCmd::Run(DEFAULT_EXCOMIN_FREQ));
+        EXTCOMIN_SIG.signal(ExcominCmd::Run);
+        crate::futures::yield_now().await;
     }
 
-    pub fn off(&mut self) {
+    pub async fn off(&mut self) {
         EXTCOMIN_SIG.signal(ExcominCmd::Pause);
         self.disp.set_low();
+        crate::futures::yield_now().await;
     }
 
     pub(crate) async fn setup(
@@ -113,7 +128,7 @@ impl Display {
             disp,
         };
         Timer::after(Duration::from_micros(1000)).await;
-        disp.on();
+        disp.on().await;
         Timer::after(Duration::from_micros(200)).await;
 
         disp
@@ -191,19 +206,23 @@ impl Backlight {
         self.pin.set_level(self.level);
     }
 
-    pub fn set_on(&mut self) {
+    pub async fn set_on(&mut self) {
+        EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(120));
+        crate::futures::yield_now().await;
         self.level = Level::High;
         self.set();
     }
 
-    pub fn set_off(&mut self) {
+    pub async fn set_off(&mut self) {
+        EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(DEFAULT_EXCOMIN_FREQ));
+        crate::futures::yield_now().await;
         self.level = Level::Low;
         self.set();
     }
 
     #[must_use]
-    pub fn on<'a>(&'a mut self) -> BacklightOn<'a> {
-        self.set_on();
+    pub async fn on<'a>(&'a mut self) -> BacklightOn<'a> {
+        self.set_on().await;
         BacklightOn { bl: self }
     }
 
@@ -222,6 +241,6 @@ pub struct BacklightOn<'a> {
 
 impl Drop for BacklightOn<'_> {
     fn drop(&mut self) {
-        self.bl.set_off();
+        crate::futures::block_on(self.bl.set_off());
     }
 }

@@ -13,7 +13,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
     options: ArrayVec<(&str, T), N>,
     button: T,
 ) -> T {
-    ctx.lcd.on();
+    ctx.lcd.on().await;
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
     let button_style = ButtonStyle {
@@ -116,7 +116,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
     battery: &mut drivers::battery::AsyncBattery,
     mut options: P,
 ) -> MenuSelection<T> {
-    lcd.on();
+    lcd.on().await;
     let mut touch = touch.enabled(twi0).await;
 
     let button_style = ButtonStyle {

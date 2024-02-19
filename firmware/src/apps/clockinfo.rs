@@ -12,7 +12,7 @@ pub async fn clock_info(ctx: &mut Context) {
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
-    ctx.lcd.on();
+    ctx.lcd.on().await;
     //ctx.backlight.off();
     loop {
         ctx.lcd.fill(Rgb111::black());

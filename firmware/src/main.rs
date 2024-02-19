@@ -121,7 +121,7 @@ async fn clock(ctx: &mut Context) {
         on: Rgb111::white(),
     };
 
-    ctx.lcd.on();
+    ctx.lcd.on().await;
     loop {
         ctx.lcd.fill(bw_config.off);
 

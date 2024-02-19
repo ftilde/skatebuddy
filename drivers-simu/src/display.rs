@@ -25,13 +25,13 @@ impl Display {
             window,
         }
     }
-    pub fn on(&mut self) {
+    pub async fn on(&mut self) {
         let mut window = self.window.lock().unwrap();
         window.display_on = true;
         window.update_window();
     }
 
-    pub fn off(&mut self) {
+    pub async fn off(&mut self) {
         let mut window = self.window.lock().unwrap();
         window.display_on = false;
         window.update_window();
@@ -59,21 +59,21 @@ pub struct Backlight {
 }
 
 impl Backlight {
-    pub fn set_on(&mut self) {
+    pub async fn set_on(&mut self) {
         let mut window = self.window.lock().unwrap();
         window.backlight_on = true;
         window.update_window();
     }
 
-    pub fn set_off(&mut self) {
+    pub async fn set_off(&mut self) {
         let mut window = self.window.lock().unwrap();
         window.backlight_on = false;
         window.update_window();
     }
 
     #[must_use]
-    pub fn on<'a>(&'a mut self) -> BacklightOn<'a> {
-        self.set_on();
+    pub async fn on<'a>(&'a mut self) -> BacklightOn<'a> {
+        self.set_on().await;
         BacklightOn { bl: self }
     }
 }
@@ -84,6 +84,6 @@ pub struct BacklightOn<'a> {
 
 impl Drop for BacklightOn<'_> {
     fn drop(&mut self) {
-        self.bl.set_off();
+        crate::futures::block_on(self.bl.set_off());
     }
 }

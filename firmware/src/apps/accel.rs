@@ -15,7 +15,7 @@ pub async fn accel(ctx: &mut Context) {
 
     let mut ticker = Ticker::every(Duration::from_millis(100));
 
-    ctx.lcd.on();
+    ctx.lcd.on().await;
     //ctx.backlight.off();
     loop {
         let reading = accel.reading_nf().await;
