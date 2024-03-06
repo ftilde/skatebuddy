@@ -214,6 +214,15 @@ async fn reset(ctx: &mut Context) {
     }
 }
 
+async fn format_flash(ctx: &mut Context) {
+    let options = [("Really Format", true), ("Back", false)].into();
+
+    if apps::menu::grid_menu(ctx, options, false).await {
+        let mut flash = ctx.flash.on().await;
+        Filesystem::format(&mut flash).unwrap();
+    }
+}
+
 async fn app_menu(ctx: &mut Context) {
     #[derive(Copy, Clone)]
     enum App {
@@ -224,6 +233,8 @@ async fn app_menu(ctx: &mut Context) {
         Reset,
         Accel,
         Files,
+        Panic,
+        FormatFlash,
     }
 
     let options = [
@@ -234,6 +245,8 @@ async fn app_menu(ctx: &mut Context) {
         ("Reset", App::Reset),
         ("Accel", App::Accel),
         ("Files", App::Files),
+        ("Panic", App::Panic),
+        ("Fmt Flash", App::FormatFlash),
     ];
 
     loop {
@@ -256,6 +269,8 @@ async fn app_menu(ctx: &mut Context) {
                 App::Accel => apps::accel::accel(ctx).await,
                 App::Files => apps::files::files(ctx).await,
                 App::Reset => reset(ctx).await,
+                App::Panic => panic!("as you choose"),
+                App::FormatFlash => format_flash(ctx).await,
             }
         } else {
             break;
