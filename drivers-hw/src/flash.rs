@@ -176,7 +176,8 @@ impl<'a> Flash<'a> {
         self.write_inner(addr, initial).await;
         let rest = &buf[initial_end..];
         let rest_begin = addr + initial_end as u32;
-        for (i, block) in rest.windows(WRITE_BLOCK_SIZE).enumerate() {
+        for (i, block) in rest.chunks(WRITE_BLOCK_SIZE).enumerate() {
+            assert_eq!(rest_begin % WRITE_BLOCK_SIZE as u32, 0);
             self.write_inner(rest_begin + (i * WRITE_BLOCK_SIZE) as u32, block)
                 .await;
         }
