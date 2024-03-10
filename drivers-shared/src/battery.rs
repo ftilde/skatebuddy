@@ -20,21 +20,27 @@ impl Reading {
 
     pub fn percentage(&self) -> f32 {
         let voltage = self.voltage();
-        let v_100 = 4.2;
-        let v_80 = 3.95;
-        let v_10 = 3.70;
-        let v_0 = 3.3;
 
-        // Piecewise linear approximation as done in espruino
-        let percentage = if voltage > v_80 {
-            (voltage - v_80) * 20.0 / (v_100 - v_80) + 80.0
-        } else if voltage > v_10 {
-            (voltage - v_10) * 70.0 / (v_80 - v_10) + 10.0
+        // Values obtained from tools/calc_bat_coefficients.py
+        const P0: f32 = 0.0;
+        const P1: f32 = 0.07502381897223538;
+        const P2: f32 = 0.6783340794345193;
+        const P3: f32 = 1.0;
+        const V0: f32 = 3.3217568397521973;
+        const V1: f32 = 3.703044909150518;
+        const V2: f32 = 3.9337690661061937;
+        const V3: f32 = 4.266753673553467;
+
+        // Piecewise linear approximation (3 linear pieces)
+        let proportion = if voltage > V2 {
+            (voltage - V2) * (P3 - P2) / (V3 - V2) + P2
+        } else if voltage > V1 {
+            (voltage - V1) * (P2 - P1) / (V2 - V1) + P1
         } else {
-            (voltage - v_0) * 10.0 / (v_10 - v_0)
+            (voltage - V0) * (P1 - P0) / (V1 - V0) + P0
         };
 
-        percentage
+        proportion * 100.0
     }
 }
 
