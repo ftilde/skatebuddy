@@ -28,6 +28,39 @@ pub fn resync_time(
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct ClockScale {
+    pub numerator: i32,
+    pub denominator: i32,
+}
+
+impl ClockScale {
+    pub const fn one() -> Self {
+        Self {
+            numerator: 1,
+            denominator: 1,
+        }
+    }
+    pub fn new(real_time: i32, clock_time: i32) -> Self {
+        Self {
+            numerator: real_time,
+            denominator: clock_time,
+        }
+    }
+
+    pub fn apply(&self, time: i32) -> i32 {
+        let dt = self.numerator - self.denominator;
+        time + time * dt / self.denominator
+    }
+
+    pub fn inverse(&self) -> Self {
+        Self {
+            numerator: self.denominator,
+            denominator: self.numerator,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

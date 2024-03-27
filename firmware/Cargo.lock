@@ -662,6 +662,7 @@ dependencies = [
  "num_enum",
  "once_cell",
  "smol",
+ "util",
 ]
 
 [[package]]

@@ -1,6 +1,7 @@
 pub use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
+use util::ClockScale;
 
 pub static BOOT: Lazy<Instant> = Lazy::new(|| Instant::now());
 
@@ -15,6 +16,27 @@ pub fn num_sync_fails() -> u32 {
 }
 pub fn last_drift_s() -> i32 {
     0
+}
+
+pub fn next_sync() -> Instant {
+    Instant::now()
+}
+
+#[derive(Copy, Clone)]
+pub struct ClockInfo {
+    pub scale: ClockScale,
+    pub offset_s: u64,
+    pub last_sync: Instant,
+    pub last_sync_time: chrono::DateTime<chrono::Utc>,
+}
+
+pub fn clock_info() -> ClockInfo {
+    ClockInfo {
+        scale: ClockScale::one(),
+        offset_s: 0,
+        last_sync: Instant::now(),
+        last_sync_time: chrono::DateTime::UNIX_EPOCH,
+    }
 }
 
 pub fn now_utc() -> Option<chrono::DateTime<chrono::Utc>> {
