@@ -14,6 +14,7 @@ use smol::{
     LocalExecutor,
 };
 pub mod futures;
+pub mod hrm;
 pub mod mag;
 pub mod time;
 pub mod touch;
@@ -58,6 +59,7 @@ pub struct Context {
     pub mag: mag::MagRessources,
     pub touch: touch::TouchRessources,
     pub accel: accel::AccelRessources,
+    pub hrm: hrm::HrmRessources,
     pub twi0: TWI0,
     pub twi1: TWI1,
 }
@@ -99,6 +101,7 @@ pub fn run(main: impl Main) -> ! {
             window: window.clone(),
         },
         accel: accel::AccelRessources {},
+        hrm: hrm::HrmRessources,
         twi0: TWI0,
         twi1: TWI1,
     };

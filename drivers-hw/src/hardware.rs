@@ -44,13 +44,13 @@ pub mod bat {
     pub type VOLTAGE = P0_03;
 }
 
-pub mod hr {
+pub mod hrm {
     use embassy_nrf::peripherals::*;
     pub type SDA = P0_24;
     pub type SCL = P1_00;
     pub type EN = P0_21;
-    pub type INT = P0_22;
-    const ADDR: u8 = 0x33;
+    pub type IRQ = P0_22;
+    pub const ADDR: u8 = 0x33;
 }
 
 pub mod accel {

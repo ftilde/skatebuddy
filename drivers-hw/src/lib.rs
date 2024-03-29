@@ -21,6 +21,7 @@ pub mod flash;
 pub mod gps;
 pub mod hardware;
 pub use drivers_shared::lpm013m1126c;
+pub mod hrm;
 pub mod mag;
 pub mod time;
 pub mod touch;
@@ -74,6 +75,7 @@ pub struct Context {
     pub mag: mag::MagRessources,
     pub touch: touch::TouchRessources,
     pub accel: accel::AccelRessources,
+    pub hrm: hrm::HrmRessources,
     pub twi0: TWI0,
     pub twi1: TWI1,
 }
@@ -96,14 +98,9 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
     let battery = battery::AsyncBattery::new(&spawner, battery, bat_state);
 
-    // Keep hrm in reset to power it off
-    let _hrm_power = Output::new(p.P0_21, Level::Low, OutputDrive::Standard);
+    let hrm = hrm::HrmRessources::new(p.P0_24, p.P1_00, p.P0_21, p.P0_22);
 
     // Explicitly "disconnect" the following devices' i2c pins
-    // Heartrate
-    let _unused = Input::new(p.P0_24, Pull::None);
-    let _unused = Input::new(p.P1_00, Pull::None);
-
     // pressure
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
@@ -154,6 +151,7 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
         mag,
         touch,
         accel,
+        hrm,
         twi0: p.TWISPI0,
         twi1: p.TWISPI1,
     }
