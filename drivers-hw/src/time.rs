@@ -162,9 +162,13 @@ impl ClockInfo {
     }
 }
 
+// Found experimentally (roughly). Clocks appear to run a tiny bit faster than real time in ambient
+// temperature. Rate is adjusted automatically, though.
+const DEFAULT_CLOCK_SCALE: ClockScale = ClockScale::new(500000 - 25, 500000);
+
 static CLOCK_INFO: Mutex<CriticalSectionRawMutex, RefCell<ClockInfo>> =
     Mutex::new(RefCell::new(ClockInfo {
-        scale: ClockScale::one(),
+        scale: DEFAULT_CLOCK_SCALE,
         offset_s: 0,
         last_sync: Instant::from_secs(0),
         last_sync_time: chrono::DateTime::UNIX_EPOCH,
@@ -177,15 +181,18 @@ fn update_clock_info(boot_time_now: Instant, datetime: chrono::DateTime<chrono::
         let mut info = info.borrow_mut();
 
         if info.valid_last_sync() {
-            LAST_DRIFT_S.store(
-                (datetime.timestamp() - info.to_utc(boot_time_now).unwrap().timestamp()) as i32,
-                Ordering::Release,
-            );
+            let drift = datetime.timestamp() - info.to_utc(boot_time_now).unwrap().timestamp();
+            LAST_DRIFT_S.store(drift as i32, Ordering::Release);
 
-            let clock_time = (boot_time_now - info.last_sync).as_secs();
-            let real_time = (datetime - info.last_sync_time).num_seconds();
+            // Only update if there is actually any drift, since for short sync periods our
+            // calculated clock scale may be actually be worse than the default (found
+            // experimentally after ~128h calibration period).
+            if drift != 0 {
+                let clock_time = (boot_time_now - info.last_sync).as_secs();
+                let real_time = (datetime - info.last_sync_time).num_seconds();
 
-            info.scale = ClockScale::new(real_time as i32, clock_time as i32);
+                info.scale = ClockScale::new(real_time as i32, clock_time as i32);
+            }
         }
 
         let boot_seconds = boot_time_now.as_secs();

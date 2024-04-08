@@ -41,7 +41,7 @@ impl ClockScale {
             denominator: 1,
         }
     }
-    pub fn new(real_time: i32, clock_time: i32) -> Self {
+    pub const fn new(real_time: i32, clock_time: i32) -> Self {
         Self {
             numerator: real_time,
             denominator: clock_time,
