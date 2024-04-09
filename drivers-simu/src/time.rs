@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicI32, Ordering};
 pub use std::time::{Duration, Instant};
 
 use once_cell::sync::Lazy;
@@ -43,8 +44,14 @@ pub fn now_utc() -> Option<chrono::DateTime<chrono::Utc>> {
     Some(chrono::Utc::now())
 }
 
+static TZ_SECONDS_EAST: AtomicI32 = AtomicI32::new(0);
+pub fn set_utc_offset(seconds_east: i32) {
+    TZ_SECONDS_EAST.store(seconds_east, Ordering::Relaxed);
+}
 pub fn now_local() -> Option<chrono::DateTime<chrono::FixedOffset>> {
-    Some(chrono::Local::now().into())
+    let now = now_utc()?;
+    let offset = chrono::FixedOffset::east_opt(TZ_SECONDS_EAST.load(Ordering::Relaxed)).unwrap();
+    Some(now.with_timezone(&offset))
 }
 
 pub fn to_instant<Tz: chrono::TimeZone>(t: chrono::DateTime<Tz>) -> Option<Instant> {

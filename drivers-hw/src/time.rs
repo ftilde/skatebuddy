@@ -206,7 +206,10 @@ fn update_clock_info(boot_time_now: Instant, datetime: chrono::DateTime<chrono::
     });
 }
 
-static TZ_SECONDS_EAST: AtomicI32 = AtomicI32::new(1 * 60 * 60); //TODO: actually sync this
+static TZ_SECONDS_EAST: AtomicI32 = AtomicI32::new(0);
+pub fn set_utc_offset(seconds_east: i32) {
+    TZ_SECONDS_EAST.store(seconds_east, Ordering::Relaxed);
+}
 const CONST_UTC_OFFSET_S: u64 = 1u64 << 30;
 
 static LAST_SYNC_TS_S: AtomicU32 = AtomicU32::new(0);

@@ -48,7 +48,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         for (btn, _) in &buttons {
-            btn.render(&mut *ctx.lcd);
+            btn.render(&mut *ctx.lcd).unwrap();
         }
 
         let ((), evt) = join::join(
@@ -157,7 +157,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
             render_top_bar(lcd, &battery).await;
 
             for (btn, _) in &buttons {
-                btn.render(&mut **lcd);
+                btn.render(&mut **lcd).unwrap();
             }
 
             let ((), evt) = join::join(

@@ -11,6 +11,7 @@
 // https://crates.io/crates/embedded-plots
 
 mod apps;
+mod settings;
 mod ui;
 mod util;
 
@@ -40,10 +41,10 @@ use embedded_graphics::text::Text;
 
 use drivers::lpm013m1126c::{BWConfig, Rgb111};
 
-use littlefs2::fs::Filesystem;
-
 use drivers::futures::select;
 use drivers::time::{Duration, Timer};
+
+type Filesystem<'a, 'b> = littlefs2::fs::Filesystem<'a, drivers::flash::Flash<'b>>;
 
 async fn render_top_bar(lcd: &mut drivers::display::Display, bat: &drivers::battery::AsyncBattery) {
     let bw_config = BWConfig {
@@ -233,6 +234,7 @@ async fn app_menu(ctx: &mut Context) {
         Reset,
         Accel,
         Hrm,
+        Settings,
         Files,
         Panic,
         FormatFlash,
@@ -243,10 +245,11 @@ async fn app_menu(ctx: &mut Context) {
         ("Clock", App::ClockInfo),
         ("Bat", App::BatInfo),
         ("Idle", App::Idle),
-        ("Reset", App::Reset),
         ("Accel", App::Accel),
         ("Hrm", App::Hrm),
+        ("Settings", App::Settings),
         ("Files", App::Files),
+        ("Reset", App::Reset),
         ("Panic", App::Panic),
         ("Fmt Flash", App::FormatFlash),
     ];
@@ -270,6 +273,7 @@ async fn app_menu(ctx: &mut Context) {
                 App::Idle => apps::idle::idle(ctx).await,
                 App::Accel => apps::accel::accel(ctx).await,
                 App::Hrm => apps::hrm::hrm(ctx).await,
+                App::Settings => settings::settings_ui(ctx).await,
                 App::Files => apps::files::files(ctx).await,
                 App::Reset => reset(ctx).await,
                 App::Panic => panic!("as you choose"),
@@ -317,6 +321,11 @@ fn main() -> ! {
                 )
                 .unwrap();
             crate::println!("This is boot nr {}", num_boots);
+
+            // Ignore in case there are no settings, yet
+            if let Ok(settings) = settings::Settings::load(&fs) {
+                settings.apply();
+            }
         }
 
         loop {

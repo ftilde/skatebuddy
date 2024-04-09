@@ -73,8 +73,8 @@ pub async fn battery_info(ctx: &mut Context) {
         }
         let _ = writeln!(w, "UPD: {}s", ctx.battery.last_update().elapsed().as_secs());
 
-        upt_button.render(&mut *ctx.lcd);
-        calibrate_button.render(&mut *ctx.lcd);
+        upt_button.render(&mut *ctx.lcd).unwrap();
+        calibrate_button.render(&mut *ctx.lcd).unwrap();
 
         ctx.lcd.present().await;
 

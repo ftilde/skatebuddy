@@ -50,9 +50,8 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
         }
     }
 
-    pub fn render<D, E>(&self, target: &mut D)
+    pub fn render<D, E>(&self, target: &mut D) -> Result<(), E>
     where
-        E: core::fmt::Debug,
         D: DrawTarget<Color = C, Error = E>,
     {
         let (bg, fg) = match self.state {
@@ -78,8 +77,9 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
             .fill_color(bg)
             .build();
 
-        bounds.into_styled(style).draw(target).unwrap();
-        text_box.draw(target).unwrap();
+        bounds.into_styled(style).draw(target)?;
+        text_box.draw(target)?;
+        Ok(())
     }
 
     pub fn clicked(&mut self, evt: &TouchEvent) -> bool {
@@ -103,6 +103,28 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
             self.state = ButtonState::Up;
         }
         false
+    }
+}
+
+impl<'a, 'b, C> embedded_layout::View for Button<'a, 'b, C> {
+    fn translate_impl(&mut self, by: Point) {
+        self.def.position += by;
+    }
+
+    fn bounds(&self) -> Rectangle {
+        self.def.rect()
+    }
+}
+impl<'a, 'b, C: PixelColor + Default> embedded_graphics::Drawable for Button<'a, 'b, C> {
+    type Color = C;
+
+    type Output = ();
+
+    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
+    where
+        D: DrawTarget<Color = Self::Color>,
+    {
+        self.render(target)
     }
 }
 
