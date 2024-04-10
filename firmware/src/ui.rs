@@ -6,12 +6,63 @@ use embedded_graphics::{
     primitives::Rectangle,
     text::{renderer::TextRenderer, Text},
 };
+use embedded_layout::layout::linear::LinearLayout;
 use embedded_text::{alignment::HorizontalAlignment, style::TextBoxStyleBuilder, TextBox};
 
 use drivers::{
     lpm013m1126c::{BWConfig, Rgb111},
     touch::{EventKind, Gesture, TouchEvent},
 };
+
+pub enum TouchResult<R> {
+    Done(R),
+    Continue,
+}
+
+pub trait EventHandler<Context, R> {
+    fn touch(&mut self, e: TouchEvent, ctx: &mut Context) -> TouchResult<R>;
+}
+
+impl<C, Context, R> EventHandler<Context, R> for Text<'_, C> {
+    fn touch(&mut self, _e: TouchEvent, _ctx: &mut Context) -> TouchResult<R> {
+        TouchResult::Continue
+    }
+}
+impl<Context, R, I: EventHandler<Context, R>> EventHandler<Context, R>
+    for embedded_layout::object_chain::Chain<I>
+{
+    fn touch(&mut self, e: TouchEvent, ctx: &mut Context) -> TouchResult<R> {
+        self.object.touch(e, ctx)
+    }
+}
+
+impl<
+        Context,
+        R,
+        I: EventHandler<Context, R>,
+        IC: EventHandler<Context, R> + embedded_layout::object_chain::ChainElement,
+    > EventHandler<Context, R> for embedded_layout::object_chain::Link<I, IC>
+{
+    fn touch(&mut self, e: TouchEvent, ctx: &mut Context) -> TouchResult<R> {
+        if let TouchResult::Done(r) = self.object.touch(e, ctx) {
+            TouchResult::Done(r)
+        } else {
+            self.parent.touch(e, ctx)
+        }
+    }
+}
+
+impl<
+        Context,
+        R,
+        LD: embedded_layout::layout::linear::Orientation,
+        VG: embedded_layout::view_group::ViewGroup + EventHandler<Context, R>,
+    > EventHandler<Context, R> for LinearLayout<LD, VG>
+{
+    fn touch(&mut self, e: TouchEvent, ctx: &mut Context) -> TouchResult<R> {
+        self.inner_mut().touch(e, ctx)
+    }
+}
 
 pub struct ButtonStyle<'a, C> {
     pub fill: C,
@@ -43,7 +94,7 @@ pub struct Button<'a, 'b, C> {
     state: ButtonState,
 }
 
-impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
+impl<'a, 'b, C: PixelColor> Button<'a, 'b, C> {
     pub fn new(def: ButtonDefinition<'a, 'b, C>) -> Self {
         Self {
             def,
@@ -51,6 +102,41 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
         }
     }
 
+    pub fn clicked(&mut self, evt: &TouchEvent) -> bool {
+        let bounds = self.def.rect();
+        if bounds.contains(evt.point()) {
+            match (evt.kind, evt.gesture) {
+                (EventKind::Press | EventKind::Hold, _) => {
+                    self.state = ButtonState::Down;
+                }
+                (EventKind::Release, Gesture::SinglePress) => {
+                    if let ButtonState::Down = self.state {
+                        self.state = ButtonState::Up;
+                        return true;
+                    }
+                }
+                (EventKind::Release, _) => {
+                    self.state = ButtonState::Up;
+                }
+            }
+        } else {
+            self.state = ButtonState::Up;
+        }
+        false
+    }
+
+    pub fn on_click<Context, R>(
+        self,
+        action: fn(&mut Context) -> R,
+    ) -> ActionButton<'a, 'b, C, Context, R> {
+        ActionButton {
+            inner: self,
+            action,
+        }
+    }
+}
+
+impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
     pub fn render<D, E>(&self, target: &mut D) -> Result<(), E>
     where
         D: DrawTarget<Color = C, Error = E>,
@@ -82,29 +168,6 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
         text_box.draw(target)?;
         Ok(())
     }
-
-    pub fn clicked(&mut self, evt: &TouchEvent) -> bool {
-        let bounds = self.def.rect();
-        if bounds.contains(evt.point()) {
-            match (evt.kind, evt.gesture) {
-                (EventKind::Press | EventKind::Hold, _) => {
-                    self.state = ButtonState::Down;
-                }
-                (EventKind::Release, Gesture::SinglePress) => {
-                    if let ButtonState::Down = self.state {
-                        self.state = ButtonState::Up;
-                        return true;
-                    }
-                }
-                (EventKind::Release, _) => {
-                    self.state = ButtonState::Up;
-                }
-            }
-        } else {
-            self.state = ButtonState::Up;
-        }
-        false
-    }
 }
 
 impl<'r, 'a, 'b, C> embedded_layout::View for &'r mut Button<'a, 'b, C> {
@@ -131,6 +194,49 @@ impl<'r, 'a, 'b, C: PixelColor + Default> embedded_graphics::Drawable
     }
 }
 
+pub struct ActionButton<'a, 'b, C, Context, R> {
+    inner: Button<'a, 'b, C>,
+    action: fn(&mut Context) -> R,
+}
+
+impl<'r, 'a, 'b, C: PixelColor + Default, Context, R> embedded_layout::View
+    for &'r mut ActionButton<'a, 'b, C, Context, R>
+{
+    fn translate_impl(&mut self, by: Point) {
+        self.inner.def.position += by;
+    }
+
+    fn bounds(&self) -> Rectangle {
+        self.inner.def.rect()
+    }
+}
+impl<'r, 'a, 'b, C: PixelColor + Default, Context, R> embedded_graphics::Drawable
+    for &'r mut ActionButton<'a, 'b, C, Context, R>
+{
+    type Color = C;
+
+    type Output = ();
+
+    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
+    where
+        D: DrawTarget<Color = Self::Color>,
+    {
+        self.inner.render(target)
+    }
+}
+
+impl<'r, 'a, 'b, C: PixelColor, Context, R> EventHandler<Context, R>
+    for &'r mut ActionButton<'a, 'b, C, Context, R>
+{
+    fn touch(&mut self, e: TouchEvent, ctx: &mut Context) -> TouchResult<R> {
+        if self.inner.clicked(&e) {
+            TouchResult::Done((self.action)(ctx))
+        } else {
+            TouchResult::Continue
+        }
+    }
+}
+
 pub struct Label<'a, const SIZE: usize, C> {
     pub style: MonoTextStyle<'a, C>,
     buffer: ArrForm<SIZE>,
@@ -152,6 +258,9 @@ impl<'a, const SIZE: usize, C: PixelColor> Label<'a, SIZE, C> {
         self.buffer = arrform::ArrForm::new();
         LabelWrite { inner: self }
     }
+    pub fn render<D: DrawTarget<Color = C>>(&self, target: &mut D) -> Result<Point, D::Error> {
+        self.text().draw(target)
+    }
 }
 
 pub struct LabelWrite<'r, 'a, const SIZE: usize, C> {
@@ -164,7 +273,9 @@ impl<'a, const SIZE: usize, C: PixelColor> core::fmt::Write for LabelWrite<'_, '
     }
 }
 
-impl<'a, const SIZE: usize, C: PixelColor> embedded_graphics::Drawable for Label<'a, SIZE, C> {
+impl<'r, 'a, const SIZE: usize, C: PixelColor> embedded_graphics::Drawable
+    for &'r mut Label<'a, SIZE, C>
+{
     type Color = C;
 
     type Output = Point;
@@ -173,7 +284,7 @@ impl<'a, const SIZE: usize, C: PixelColor> embedded_graphics::Drawable for Label
     where
         D: DrawTarget<Color = Self::Color>,
     {
-        self.text().draw(target)
+        self.render(target)
     }
 }
 
@@ -186,6 +297,13 @@ impl<'r, 'a, const SIZE: usize, C: PixelColor> embedded_layout::View
 
     fn bounds(&self) -> Rectangle {
         self.text().bounds()
+    }
+}
+impl<'r, 'a, const SIZE: usize, C: PixelColor, Context, R> EventHandler<Context, R>
+    for &'r mut Label<'a, SIZE, C>
+{
+    fn touch(&mut self, _e: TouchEvent, _ctx: &mut Context) -> TouchResult<R> {
+        TouchResult::Continue
     }
 }
 
