@@ -1,3 +1,4 @@
+use arrform::ArrForm;
 use embedded_graphics::{
     mono_font::{MonoFont, MonoTextStyle},
     pixelcolor::BinaryColor,
@@ -106,7 +107,7 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
     }
 }
 
-impl<'a, 'b, C> embedded_layout::View for Button<'a, 'b, C> {
+impl<'r, 'a, 'b, C> embedded_layout::View for &'r mut Button<'a, 'b, C> {
     fn translate_impl(&mut self, by: Point) {
         self.def.position += by;
     }
@@ -115,7 +116,9 @@ impl<'a, 'b, C> embedded_layout::View for Button<'a, 'b, C> {
         self.def.rect()
     }
 }
-impl<'a, 'b, C: PixelColor + Default> embedded_graphics::Drawable for Button<'a, 'b, C> {
+impl<'r, 'a, 'b, C: PixelColor + Default> embedded_graphics::Drawable
+    for &'r mut Button<'a, 'b, C>
+{
     type Color = C;
 
     type Output = ();
@@ -125,6 +128,64 @@ impl<'a, 'b, C: PixelColor + Default> embedded_graphics::Drawable for Button<'a,
         D: DrawTarget<Color = Self::Color>,
     {
         self.render(target)
+    }
+}
+
+pub struct Label<'a, const SIZE: usize, C> {
+    pub style: MonoTextStyle<'a, C>,
+    buffer: ArrForm<SIZE>,
+    pub position: Point,
+}
+
+impl<'a, const SIZE: usize, C: PixelColor> Label<'a, SIZE, C> {
+    pub fn new(buffer: ArrForm<SIZE>, style: MonoTextStyle<'a, C>) -> Self {
+        Self {
+            style,
+            buffer,
+            position: Point::zero(),
+        }
+    }
+    pub fn text<'r>(&'r self) -> Text<'r, MonoTextStyle<'a, C>> {
+        Text::new(self.buffer.as_str(), self.position, self.style)
+    }
+    pub fn set<'r>(&'r mut self) -> LabelWrite<'r, 'a, SIZE, C> {
+        self.buffer = arrform::ArrForm::new();
+        LabelWrite { inner: self }
+    }
+}
+
+pub struct LabelWrite<'r, 'a, const SIZE: usize, C> {
+    inner: &'r mut Label<'a, SIZE, C>,
+}
+
+impl<'a, const SIZE: usize, C: PixelColor> core::fmt::Write for LabelWrite<'_, '_, SIZE, C> {
+    fn write_str(&mut self, s: &str) -> core::fmt::Result {
+        self.inner.buffer.write_str(s)
+    }
+}
+
+impl<'a, const SIZE: usize, C: PixelColor> embedded_graphics::Drawable for Label<'a, SIZE, C> {
+    type Color = C;
+
+    type Output = Point;
+
+    fn draw<D>(&self, target: &mut D) -> Result<Self::Output, D::Error>
+    where
+        D: DrawTarget<Color = Self::Color>,
+    {
+        self.text().draw(target)
+    }
+}
+
+impl<'r, 'a, const SIZE: usize, C: PixelColor> embedded_layout::View
+    for &'r mut Label<'a, SIZE, C>
+{
+    fn translate_impl(&mut self, by: Point) {
+        self.position += by;
+    }
+
+    fn bounds(&self) -> Rectangle {
+        self.text().bounds()
     }
 }
 

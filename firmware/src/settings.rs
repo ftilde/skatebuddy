@@ -1,3 +1,6 @@
+use core::fmt::Write;
+
+use arrform::*;
 use drivers::{
     futures::select,
     lpm013m1126c::{BWConfig, Rgb111},
@@ -62,7 +65,7 @@ impl Settings {
 pub async fn settings_ui(ctx: &mut Context) {
     let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
     //let sl = TextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
-    let sl = MonoTextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
+    let sl = MonoTextStyle::new(font, Rgb111::white());
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
@@ -74,47 +77,38 @@ pub async fn settings_ui(ctx: &mut Context) {
         font,
     };
 
-    let bw_config = BWConfig {
-        off: Rgb111::black(),
-        on: Rgb111::white(),
-    };
+    let mut settings = ctx.flash.with_fs(|fs| Settings::load(fs)).await.unwrap();
 
     let w = 30;
     let h = sl.font.character_size.height;
-    let plus_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
+    let mut plus_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
         position: Point::new(0, 0),
         size: Size::new(w, h),
         style: &button_style,
         text: "+",
     });
 
-    let minus_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
+    let mut minus_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
         position: Point::new(0, 0),
         size: Size::new(w, h),
         style: &button_style,
         text: "-",
     });
 
+    let mut text_label = crate::ui::Label::new(arrform!(10, "UTC offset"), sl);
+    let mut hours_label = crate::ui::Label::new(arrform!(3, "{:>3}", settings.utc_offset), sl);
+
     let display_area = Rectangle::new(Point::new(0, 0), Size::new(176, 176));
 
-    let text = Text::new("-24", Point::zero(), sl);
-
-    let layout = LinearLayout::horizontal(
-        Chain::new(Text::new("UTC offset", Point::zero(), sl))
-            .append(plus_button)
-            .append(text)
-            .append(minus_button),
+    LinearLayout::horizontal(
+        Chain::new(&mut text_label)
+            .append(&mut plus_button)
+            .append(&mut hours_label)
+            .append(&mut minus_button),
     )
     .with_alignment(vertical::Center)
     .arrange()
-    .align_to(&display_area, horizontal::Center, vertical::Center)
-    .into_inner();
-    let text_l = layout.parent.object;
-    let mut minus_button = layout.object;
-    let mut plus_button = layout.parent.parent.object;
-    let text_c = layout.parent.parent.parent.object;
-
-    let mut settings = ctx.flash.with_fs(|fs| Settings::load(fs)).await.unwrap();
+    .align_to(&display_area, horizontal::Center, vertical::Center);
 
     ctx.lcd.on().await;
     loop {
@@ -122,8 +116,8 @@ pub async fn settings_ui(ctx: &mut Context) {
 
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
-        text_l.draw(&mut ctx.lcd.binary(bw_config)).unwrap();
-        text_c.draw(&mut ctx.lcd.binary(bw_config)).unwrap();
+        text_label.draw(&mut *ctx.lcd).unwrap();
+        hours_label.draw(&mut *ctx.lcd).unwrap();
         plus_button.render(&mut *ctx.lcd).unwrap();
         minus_button.render(&mut *ctx.lcd).unwrap();
         //let _ = layout.draw(&mut *ctx.lcd);
@@ -148,12 +142,20 @@ pub async fn settings_ui(ctx: &mut Context) {
             }
             select::Either4::Third(_event) => {}
             select::Either4::Fourth(e) => {
+                let mut changed = false;
                 if plus_button.clicked(&e) {
-                    settings.utc_offset = settings.utc_offset.wrapping_add(1);
+                    settings.utc_offset += 1;
+                    changed = true;
                 }
                 if minus_button.clicked(&e) {
-                    settings.utc_offset = settings.utc_offset.wrapping_sub(1);
+                    settings.utc_offset -= 1;
+                    changed = true;
                 }
+                settings.utc_offset = settings.utc_offset.clamp(-23, 23);
+                if changed {
+                    write!(hours_label.set(), "{:>3}", settings.utc_offset).unwrap();
+                }
+
                 settings.apply();
             }
         }
