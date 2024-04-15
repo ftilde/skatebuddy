@@ -6,3 +6,4 @@ pub mod files;
 pub mod hrm;
 pub mod idle;
 pub mod menu;
+pub mod stopwatch;
