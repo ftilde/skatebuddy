@@ -1,6 +1,6 @@
 use crate::{render_top_bar, ui::ButtonStyle, Context};
 use arrayvec::ArrayVec;
-use drivers::futures::{join, select};
+use drivers::futures::select;
 use drivers::lpm013m1126c::Rgb111;
 use drivers::touch::{EventKind, Gesture};
 use embedded_graphics::prelude::{Point, Size};
@@ -51,11 +51,13 @@ pub async fn grid_menu<T: Clone, const N: usize>(
             btn.render(&mut *ctx.lcd).unwrap();
         }
 
-        let ((), evt) = join::join(
-            ctx.lcd.present(),
-            select::select(ctx.button.wait_for_press(), touch.wait_for_action()),
-        )
-        .await;
+        let evt = ctx
+            .lcd
+            .present_and(select::select(
+                ctx.button.wait_for_press(),
+                touch.wait_for_action(),
+            ))
+            .await;
 
         match evt {
             select::Either::First(_) => break 'outer button,
@@ -160,11 +162,12 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
                 btn.render(&mut **lcd).unwrap();
             }
 
-            let ((), evt) = join::join(
-                lcd.present(),
-                select::select(button.wait_for_press(), touch.wait_for_action()),
-            )
-            .await;
+            let evt = lcd
+                .present_and(select::select(
+                    button.wait_for_press(),
+                    touch.wait_for_action(),
+                ))
+                .await;
 
             match evt {
                 select::Either::First(_) => break 'outer MenuSelection::HardwareButton,

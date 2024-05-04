@@ -29,7 +29,8 @@ pub async fn stopwatch(ctx: &mut Context) {
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
-    let mut ticker = Ticker::every(Duration::from_millis(100));
+    let mut ticker_on = Ticker::every(Duration::from_millis(10));
+    let mut ticker_off = Ticker::every(Duration::from_millis(1000));
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
@@ -114,10 +115,10 @@ pub async fn stopwatch(ctx: &mut Context) {
             (duration.as_millis() / 10) % 100,
         );
 
-        let left_button = match state {
-            State::Stopped => &mut start_button,
-            State::Running { .. } => &mut stop_button,
-            State::Paused { .. } => &mut start_button,
+        let (left_button, ticker) = match state {
+            State::Stopped => (&mut start_button, &mut ticker_off),
+            State::Running { .. } => (&mut stop_button, &mut ticker_on),
+            State::Paused { .. } => (&mut start_button, &mut ticker_off),
         };
         let mut layout = LinearLayout::vertical(
             Chain::new(Text::new(time_text.as_str(), Point::zero(), sl)).append(
@@ -132,22 +133,22 @@ pub async fn stopwatch(ctx: &mut Context) {
 
         layout.draw(&mut *ctx.lcd).unwrap();
 
-        ctx.lcd.present().await;
-
-        match select::select3(
-            ticker.next(),
-            ctx.button.wait_for_press(),
-            touch.wait_for_action(),
-        )
-        .await
+        match ctx
+            .lcd
+            .present_and(select::select3(
+                ctx.button.wait_for_press(),
+                touch.wait_for_action(),
+                ticker.next(),
+            ))
+            .await
         {
-            select::Either3::First(_) => {}
-            select::Either3::Second(_d) => {
+            select::Either3::First(_d) => {
                 break;
             }
-            select::Either3::Third(e) => {
+            select::Either3::Second(e) => {
                 let _ = layout.touch(e, &mut state);
             }
+            select::Either3::Third(_) => {}
         }
     }
 }

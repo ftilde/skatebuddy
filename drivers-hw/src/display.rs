@@ -186,6 +186,11 @@ impl Display {
         })
         .await;
     }
+
+    pub async fn present_and<R, F: Future<Output = R>>(&mut self, f: F) -> R {
+        let ((), res) = embassy_futures::join::join(self.present(), f).await;
+        res
+    }
 }
 
 pub struct Backlight {

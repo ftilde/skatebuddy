@@ -1,3 +1,6 @@
+use embassy_futures::join;
+use futures::Future;
+
 use super::lpm013m1126c::{self, Buffer};
 
 pub struct Display {
@@ -51,6 +54,11 @@ impl Display {
     pub async fn present(&mut self) {
         let mut window = self.window.lock().unwrap();
         window.present(&mut self.buffer)
+    }
+
+    pub async fn present_and<R, F: Future<Output = R>>(&mut self, f: F) -> R {
+        let ((), res) = join::join(self.present(), f).await;
+        res
     }
 }
 
