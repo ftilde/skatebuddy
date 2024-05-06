@@ -245,7 +245,7 @@ async fn app_menu(ctx: &mut Context) {
     let options = [
         ("Clock", App::ClockInfo),
         ("Bat", App::BatInfo),
-        ("Stopwatch", App::Stopwatch),
+        ("Stop\nwatch", App::Stopwatch),
         ("Timer", App::Timer),
         ("Draw", App::Draw),
         ("Idle", App::Idle),
