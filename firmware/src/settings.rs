@@ -21,7 +21,7 @@ use littlefs2::path::Path;
 
 use crate::{
     render_top_bar,
-    ui::{ButtonStyle, EventHandler},
+    ui::{Button, ButtonDefinition, ButtonStyle, EventHandler},
     Filesystem,
 };
 
@@ -92,57 +92,33 @@ pub async fn settings_ui(ctx: &mut Context) {
 
     let w = 30;
     let h = sl.font.character_size.height;
-    let mut plus_button_hours = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(w, h),
-        style: &button_style,
-        text: "+",
-    })
-    .on_click(|ctx: &mut Settings| {
+    let size = Size::new(w, h);
+
+    let plus_button = ButtonDefinition::new(&button_style, size, "+");
+    let minus_button = ButtonDefinition::new(&button_style, size, "-");
+
+    let mut plus_button_hours = Button::from(plus_button).on_click(|ctx: &mut Settings| {
         ctx.utc_offset_hours = (ctx.utc_offset_hours + 1).min(23);
         Action::Continue
     });
 
-    let mut minus_button_hours = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(w, h),
-        style: &button_style,
-        text: "-",
-    })
-    .on_click(|ctx: &mut Settings| {
+    let mut minus_button_hours = Button::from(minus_button).on_click(|ctx: &mut Settings| {
         ctx.utc_offset_hours = (ctx.utc_offset_hours - 1).max(-23);
         Action::Continue
     });
 
-    let mut plus_button_minutes = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(w, h),
-        style: &button_style,
-        text: "+",
-    })
-    .on_click(|ctx: &mut Settings| {
+    let mut plus_button_minutes = Button::from(plus_button).on_click(|ctx: &mut Settings| {
         ctx.utc_offset_minutes = (ctx.utc_offset_minutes + 1).min(59);
         Action::Continue
     });
 
-    let mut minus_button_minutes = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(w, h),
-        style: &button_style,
-        text: "-",
-    })
-    .on_click(|ctx: &mut Settings| {
+    let mut minus_button_minutes = Button::from(minus_button).on_click(|ctx: &mut Settings| {
         ctx.utc_offset_minutes = (ctx.utc_offset_minutes - 1).max(-59);
         Action::Continue
     });
 
-    let mut save_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(2 * w, 2 * h),
-        style: &button_style,
-        text: "Save",
-    })
-    .on_click(|_ctx| Action::Stop);
+    let mut save_button =
+        Button::new(&button_style, Size::new(2 * w, 2 * h), "Save").on_click(|_ctx| Action::Stop);
 
     //let mut hours_label =
     //    crate::ui::Label::new(arrform!(3, "{:>3}", settings.utc_offset_hours), sl);

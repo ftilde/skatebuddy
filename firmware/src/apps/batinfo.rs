@@ -27,14 +27,14 @@ pub async fn battery_info(ctx: &mut Context) {
     };
 
     let w = 85;
-    let mut upt_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
+    let mut upt_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
         position: Point::new(0, 120),
         size: Size::new(w, 50),
         style: &button_style,
         text: "Update",
     });
 
-    let mut calibrate_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
+    let mut calibrate_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
         position: Point::new(drivers::lpm013m1126c::WIDTH as i32 - w as i32, 120),
         size: Size::new(w, 50),
         style: &button_style,

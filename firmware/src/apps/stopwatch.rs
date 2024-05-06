@@ -8,7 +8,6 @@ use drivers::{
 use embedded_graphics::{
     geometry::{Point, Size},
     mono_font::MonoTextStyle,
-    primitives::Rectangle,
     text::Text,
     Drawable as _,
 };
@@ -49,51 +48,35 @@ pub async fn stopwatch(ctx: &mut Context) {
 
     let w = 80;
     let h = 80;
+    let s = Size::new(w, h);
 
-    let mut start_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(w, h),
-        style: &button_style,
-        text: "Start",
-    })
-    .on_click(|s: &mut State| {
-        let duration_so_far = match *s {
-            State::Stopped => Duration::from_secs(0),
-            State::Running { .. } => panic!("Invalid state"),
-            State::Paused { so_far } => so_far,
-        };
-        *s = State::Running {
-            since: Instant::now() - duration_so_far,
-        };
-    });
+    let mut start_button =
+        crate::ui::Button::new(&button_style, s, "Start").on_click(|s: &mut State| {
+            let duration_so_far = match *s {
+                State::Stopped => Duration::from_secs(0),
+                State::Running { .. } => panic!("Invalid state"),
+                State::Paused { so_far } => so_far,
+            };
+            *s = State::Running {
+                since: Instant::now() - duration_so_far,
+            };
+        });
 
-    let mut stop_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(w, h),
-        style: &button_style,
-        text: "Stop",
-    })
-    .on_click(|s: &mut State| {
-        let State::Running { since } = *s else {
-            panic!("Invalid state to stop");
-        };
+    let mut stop_button =
+        crate::ui::Button::new(&button_style, s, "Stop").on_click(|s: &mut State| {
+            let State::Running { since } = *s else {
+                panic!("Invalid state to stop");
+            };
 
-        *s = State::Paused {
-            so_far: since.elapsed(),
-        }
-    });
+            *s = State::Paused {
+                so_far: since.elapsed(),
+            }
+        });
 
-    let mut reset_button = crate::ui::Button::new(crate::ui::ButtonDefinition {
-        position: Point::new(0, 0),
-        size: Size::new(w, h),
-        style: &button_style,
-        text: "Reset",
-    })
-    .on_click(|s: &mut State| {
-        *s = State::Stopped;
-    });
-
-    let display_area = Rectangle::new(Point::new(0, 0), Size::new(176, 176));
+    let mut reset_button =
+        crate::ui::Button::new(&button_style, s, "Reset").on_click(|s: &mut State| {
+            *s = State::Stopped;
+        });
 
     ctx.lcd.on().await;
     loop {
@@ -129,7 +112,11 @@ pub async fn stopwatch(ctx: &mut Context) {
         .with_alignment(horizontal::Center)
         .with_spacing(embedded_layout::layout::linear::FixedMargin(5))
         .arrange()
-        .align_to(&display_area, horizontal::Center, vertical::Center);
+        .align_to(
+            &drivers::lpm013m1126c::DISPLAY_AREA,
+            horizontal::Center,
+            vertical::Center,
+        );
 
         layout.draw(&mut *ctx.lcd).unwrap();
 

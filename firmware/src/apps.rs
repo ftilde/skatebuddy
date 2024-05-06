@@ -7,3 +7,4 @@ pub mod hrm;
 pub mod idle;
 pub mod menu;
 pub mod stopwatch;
+pub mod timer;

@@ -32,7 +32,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
         .map(|(text, opt)| {
             let x = i % cols;
             let y = i / cols;
-            let btn = crate::ui::Button::new(crate::ui::ButtonDefinition {
+            let btn = crate::ui::Button::from(crate::ui::ButtonDefinition {
                 position: Point::new(x * s + x_offset, y * s + y_offset),
                 size: Size::new(s as _, s as _),
                 style: &button_style,
@@ -143,7 +143,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
             .map(|opt| {
                 let x = i % cols;
                 let y = i / cols;
-                let btn = crate::ui::Button::new(crate::ui::ButtonDefinition {
+                let btn = crate::ui::Button::from(crate::ui::ButtonDefinition {
                     position: Point::new(x * s + x_offset, y * s + y_offset),
                     size: Size::new(s as _, s as _),
                     style: &button_style,

@@ -70,6 +70,7 @@ pub struct ButtonStyle<'a, C> {
     pub font: &'a MonoFont<'a>,
 }
 
+#[derive(Copy, Clone)]
 pub struct ButtonDefinition<'a, 'b, C> {
     pub position: Point,
     pub size: Size,
@@ -78,6 +79,14 @@ pub struct ButtonDefinition<'a, 'b, C> {
 }
 
 impl<'a, 'b, C> ButtonDefinition<'a, 'b, C> {
+    pub fn new(style: &'a ButtonStyle<'b, C>, size: Size, text: &'a str) -> Self {
+        Self {
+            style,
+            size,
+            text,
+            position: Point::new(0, 0),
+        }
+    }
     fn rect(&self) -> Rectangle {
         Rectangle::new(self.position, self.size)
     }
@@ -94,10 +103,19 @@ pub struct Button<'a, 'b, C> {
     state: ButtonState,
 }
 
-impl<'a, 'b, C: PixelColor> Button<'a, 'b, C> {
-    pub fn new(def: ButtonDefinition<'a, 'b, C>) -> Self {
+impl<'a, 'b, C: PixelColor> From<ButtonDefinition<'a, 'b, C>> for Button<'a, 'b, C> {
+    fn from(def: ButtonDefinition<'a, 'b, C>) -> Self {
         Self {
             def,
+            state: ButtonState::Up,
+        }
+    }
+}
+
+impl<'a, 'b, C: PixelColor> Button<'a, 'b, C> {
+    pub fn new(style: &'a ButtonStyle<'b, C>, size: Size, text: &'a str) -> Self {
+        Self {
+            def: ButtonDefinition::new(style, size, text),
             state: ButtonState::Up,
         }
     }

@@ -1,9 +1,11 @@
 use core::ops::Range;
 
-use embedded_graphics::{pixelcolor::BinaryColor, prelude::*};
+use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, primitives::Rectangle};
 
 pub const WIDTH: usize = 176;
 pub const HEIGHT: usize = 176;
+pub const DISPLAY_AREA: Rectangle =
+    Rectangle::new(Point::new(0, 0), Size::new(WIDTH as _, HEIGHT as _));
 
 pub const SPI_MODE: embedded_hal::spi::Mode = embedded_hal::spi::Mode {
     polarity: embedded_hal::spi::Polarity::IdleLow,
