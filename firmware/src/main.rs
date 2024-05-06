@@ -231,6 +231,7 @@ async fn app_menu(ctx: &mut Context) {
         ClockInfo,
         BatInfo,
         Stopwatch,
+        Timer,
         Idle,
         Reset,
         Accel,
@@ -242,10 +243,11 @@ async fn app_menu(ctx: &mut Context) {
     }
 
     let options = [
-        ("Draw", App::Draw),
         ("Clock", App::ClockInfo),
         ("Bat", App::BatInfo),
         ("Stopwatch", App::Stopwatch),
+        ("Timer", App::Timer),
+        ("Draw", App::Draw),
         ("Idle", App::Idle),
         ("Accel", App::Accel),
         ("Hrm", App::Hrm),
@@ -273,6 +275,7 @@ async fn app_menu(ctx: &mut Context) {
                 App::ClockInfo => apps::clockinfo::clock_info(ctx).await,
                 App::BatInfo => apps::batinfo::battery_info(ctx).await,
                 App::Stopwatch => apps::stopwatch::stopwatch(ctx).await,
+                App::Timer => apps::timer::timer(ctx).await,
                 App::Idle => apps::idle::idle(ctx).await,
                 App::Accel => apps::accel::accel(ctx).await,
                 App::Hrm => apps::hrm::hrm(ctx).await,
