@@ -81,6 +81,37 @@ impl Buffer {
         let mask = PIXEL_MASK << shift_amt;
         *v = (*v & !mask) | (val.0 << shift_amt);
     }
+    pub fn set_line(&mut self, row: i32, col_begin: i32, col_end: i32, val: Rgb111) {
+        if row < 0 {
+            return;
+        }
+        let row = row as usize;
+        if row >= HEIGHT {
+            return;
+        }
+        self.min_row = self.min_row.min(row as u8);
+        self.max_row = self.max_row.max(row as u8);
+
+        let mut col_begin = (col_begin.max(0) as usize).min(WIDTH);
+        let col_end = (col_end.max(0) as usize).min(WIDTH);
+
+        if col_begin % NUM_PIXELS_PER_CELL == 1 {
+            self.set(row as i32, col_begin as i32, val);
+            col_begin = col_begin + 1;
+        }
+        if col_end % NUM_PIXELS_PER_CELL == 1 {
+            let last = col_end - 1;
+            self.set(row as i32, last as i32, val);
+        }
+
+        let fill_val = val.0 << NUM_BITS_PER_PIXEL | val.0;
+        let row_idx = row * NUM_BYTES_PER_ROW + NUM_PREFIX_BYTES_PER_ROW;
+
+        let fill_begin_idx = row_idx + col_begin / NUM_PIXELS_PER_CELL;
+        let fill_end_idx = row_idx + col_end / NUM_PIXELS_PER_CELL;
+
+        self.values[fill_begin_idx..fill_end_idx].fill(fill_val);
+    }
     pub fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
         self.min_row = self.min_row.min(lines.start as u8);
         self.max_row = self.max_row.max((lines.end - 1) as u8);
@@ -161,6 +192,15 @@ pub struct BWConfig {
     pub off: Rgb111,
 }
 
+impl BWConfig {
+    fn map(&self, col: BinaryColor) -> Rgb111 {
+        match col {
+            BinaryColor::Off => self.off,
+            BinaryColor::On => self.on,
+        }
+    }
+}
+
 pub struct BufferBW<'a> {
     inner: &'a mut Buffer,
     config: BWConfig,
@@ -189,6 +229,21 @@ impl DrawTarget for Buffer {
         }
         Ok(())
     }
+    //fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
+    //where
+    //    I: IntoIterator<Item = Self::Color>,
+    //{
+    //    dbg!("Cont");
+    //    Ok(())
+    //}
+    fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+        for yi in 0..area.size.height {
+            let col_begin = area.top_left.x;
+            let col_end = col_begin + area.size.width as i32;
+            self.set_line(area.top_left.y + yi as i32, col_begin, col_end, color);
+        }
+        Ok(())
+    }
 }
 
 impl<'a> OriginDimensions for BufferBW<'a> {
@@ -206,15 +261,21 @@ impl<'a> DrawTarget for BufferBW<'a> {
     where
         I: IntoIterator<Item = embedded_graphics::Pixel<Self::Color>>,
     {
-        self.inner.draw_iter(pixels.into_iter().map(|Pixel(p, v)| {
-            Pixel(
-                p,
-                match v {
-                    BinaryColor::Off => self.config.off,
-                    BinaryColor::On => self.config.on,
-                },
-            )
-        }))
+        self.inner.draw_iter(
+            pixels
+                .into_iter()
+                .map(|Pixel(p, v)| Pixel(p, self.config.map(v))),
+        )
+    }
+    //fn fill_contiguous<I>(&mut self, area: &Rectangle, colors: I) -> Result<(), Self::Error>
+    //where
+    //    I: IntoIterator<Item = Self::Color>,
+    //{
+    //    self.inner
+    //        .fill_contiguous(area, colors.into_iter().map(|c| self.config.map(c)))
+    //}
+    fn fill_solid(&mut self, area: &Rectangle, color: Self::Color) -> Result<(), Self::Error> {
+        self.inner.fill_solid(area, self.config.map(color))
     }
 }
 

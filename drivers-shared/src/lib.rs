@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(target_arch = "arm", no_std)]
 
 pub mod accel;
 pub mod battery;
