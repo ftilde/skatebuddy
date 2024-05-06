@@ -13,6 +13,7 @@ use smol::{
     channel::{Receiver, Sender},
     LocalExecutor,
 };
+pub mod buzz;
 pub mod futures;
 pub mod hrm;
 pub mod mag;
@@ -60,6 +61,7 @@ pub struct Context {
     pub touch: touch::TouchRessources,
     pub accel: accel::AccelRessources,
     pub hrm: hrm::HrmRessources,
+    pub buzzer: buzz::Buzzer,
     pub twi0: TWI0,
     pub twi1: TWI1,
 }
@@ -101,6 +103,7 @@ pub fn run(main: impl Main) -> ! {
             window: window.clone(),
         },
         accel: accel::AccelRessources {},
+        buzzer: buzz::Buzzer::new(),
         hrm: hrm::HrmRessources,
         twi0: TWI0,
         twi1: TWI1,

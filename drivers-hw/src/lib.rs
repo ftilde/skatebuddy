@@ -2,7 +2,7 @@
 
 use embassy_nrf::{
     bind_interrupts,
-    gpio::{Input, Level, Output, OutputDrive, Pull},
+    gpio::{Input, Pull},
     peripherals::{TWISPI0, TWISPI1},
     saadc, spim, twim,
 };
@@ -21,6 +21,7 @@ pub mod flash;
 pub mod gps;
 pub mod hardware;
 pub use drivers_shared::lpm013m1126c;
+pub mod buzz;
 pub mod hrm;
 pub mod mag;
 pub mod time;
@@ -76,6 +77,7 @@ pub struct Context {
     pub touch: touch::TouchRessources,
     pub accel: accel::AccelRessources,
     pub hrm: hrm::HrmRessources,
+    pub buzzer: buzz::Buzzer,
     pub twi0: TWI0,
     pub twi1: TWI1,
 }
@@ -105,7 +107,7 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     let _unused = Input::new(p.P1_15, Pull::None);
     let _unused = Input::new(p.P0_02, Pull::None);
 
-    let _vibrate = Output::new(p.P0_19, Level::Low, OutputDrive::Standard);
+    let buzzer = buzz::Buzzer::new(&spawner, p.P0_19);
 
     let flash =
         flash::FlashRessources::new(p.QSPI, p.P0_14, p.P0_16, p.P0_15, p.P0_13, p.P1_10, p.P1_11)
@@ -152,6 +154,7 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
         touch,
         accel,
         hrm,
+        buzzer,
         twi0: p.TWISPI0,
         twi1: p.TWISPI1,
     }

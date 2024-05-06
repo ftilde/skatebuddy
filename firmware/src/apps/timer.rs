@@ -62,6 +62,7 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
     let s = Size::new(150, 100);
 
     let mut dismiss_btn = crate::ui::Button::new(&button_style, s, "Dismiss");
+    let _buzz = ctx.buzzer.on();
 
     ctx.lcd.on().await;
 
