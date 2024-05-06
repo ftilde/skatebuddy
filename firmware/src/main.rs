@@ -224,34 +224,16 @@ async fn format_flash(ctx: &mut Context) {
     }
 }
 
-async fn app_menu(ctx: &mut Context) {
+async fn system_menu(ctx: &mut Context) {
     #[derive(Copy, Clone)]
     enum App {
-        Draw,
-        ClockInfo,
-        BatInfo,
-        Stopwatch,
-        Timer,
-        Idle,
         Reset,
-        Accel,
-        Hrm,
-        Settings,
-        Files,
         Panic,
         FormatFlash,
+        Files,
     }
 
     let options = [
-        ("Clock", App::ClockInfo),
-        ("Bat", App::BatInfo),
-        ("Stop\nwatch", App::Stopwatch),
-        ("Timer", App::Timer),
-        ("Draw", App::Draw),
-        ("Idle", App::Idle),
-        ("Accel", App::Accel),
-        ("Hrm", App::Hrm),
-        ("Settings", App::Settings),
         ("Files", App::Files),
         ("Reset", App::Reset),
         ("Panic", App::Panic),
@@ -271,19 +253,67 @@ async fn app_menu(ctx: &mut Context) {
             .await
         {
             match app {
-                App::Draw => apps::draw::touch_playground(ctx).await,
+                App::Files => apps::files::files(ctx).await,
+                App::Reset => reset(ctx).await,
+                App::Panic => panic!("as you choose"),
+                App::FormatFlash => format_flash(ctx).await,
+            }
+        } else {
+            break;
+        }
+    }
+}
+async fn app_menu(ctx: &mut Context) {
+    #[derive(Copy, Clone)]
+    enum App {
+        Draw,
+        Stopwatch,
+        ClockInfo,
+        BatInfo,
+        Timer,
+        Idle,
+        Accel,
+        Hrm,
+        Settings,
+        System,
+    }
+
+    let options = [
+        ("Clock", App::ClockInfo),
+        ("Bat", App::BatInfo),
+        ("Stop\nwatch", App::Stopwatch),
+        ("Timer", App::Timer),
+        ("Draw", App::Draw),
+        ("Idle", App::Idle),
+        ("Accel", App::Accel),
+        ("Hrm", App::Hrm),
+        ("Settings", App::Settings),
+        ("System", App::System),
+    ];
+
+    loop {
+        if let apps::menu::MenuSelection::Item((_, app)) =
+            apps::menu::paginated_grid_menu::<4, _, _>(
+                &mut ctx.touch,
+                &mut ctx.twi0,
+                &mut ctx.button,
+                &mut ctx.lcd,
+                &mut ctx.battery,
+                options.as_slice(),
+            )
+            .await
+        {
+            match app {
                 App::ClockInfo => apps::clockinfo::clock_info(ctx).await,
                 App::BatInfo => apps::batinfo::battery_info(ctx).await,
+                App::Draw => apps::draw::touch_playground(ctx).await,
                 App::Stopwatch => apps::stopwatch::stopwatch(ctx).await,
                 App::Timer => apps::timer::timer(ctx).await,
                 App::Idle => apps::idle::idle(ctx).await,
                 App::Accel => apps::accel::accel(ctx).await,
                 App::Hrm => apps::hrm::hrm(ctx).await,
                 App::Settings => settings::settings_ui(ctx).await,
-                App::Files => apps::files::files(ctx).await,
-                App::Reset => reset(ctx).await,
-                App::Panic => panic!("as you choose"),
-                App::FormatFlash => format_flash(ctx).await,
+                App::System => system_menu(ctx).await,
             }
         } else {
             break;
