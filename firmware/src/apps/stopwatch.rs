@@ -5,12 +5,7 @@ use drivers::{
     time::{Duration, Instant, Ticker},
     Context,
 };
-use embedded_graphics::{
-    geometry::{Point, Size},
-    mono_font::MonoTextStyle,
-    text::Text,
-    Drawable as _,
-};
+use embedded_graphics::{geometry::Size, mono_font::MonoTextStyle, Drawable as _};
 use embedded_layout::{
     align::{horizontal, vertical, Align as _},
     layout::linear::LinearLayout,
@@ -19,7 +14,7 @@ use embedded_layout::{
 
 use crate::{
     render_top_bar,
-    ui::{ButtonStyle, EventHandler as _},
+    ui::{textbox, ButtonStyle, EventHandler as _},
 };
 
 pub async fn stopwatch(ctx: &mut Context) {
@@ -51,7 +46,7 @@ pub async fn stopwatch(ctx: &mut Context) {
     let s = Size::new(w, h);
 
     let mut start_button =
-        crate::ui::Button::eager(&button_style, s, "Start").on_click(|s: &mut State| {
+        crate::ui::Button::lazy(&button_style, s, "Start").on_click(|s: &mut State| {
             let duration_so_far = match *s {
                 State::Stopped => Duration::from_secs(0),
                 State::Running { .. } => panic!("Invalid state"),
@@ -63,7 +58,7 @@ pub async fn stopwatch(ctx: &mut Context) {
         });
 
     let mut stop_button =
-        crate::ui::Button::eager(&button_style, s, "Stop").on_click(|s: &mut State| {
+        crate::ui::Button::lazy(&button_style, s, "Stop").on_click(|s: &mut State| {
             let State::Running { since } = *s else {
                 panic!("Invalid state to stop");
             };
@@ -74,14 +69,14 @@ pub async fn stopwatch(ctx: &mut Context) {
         });
 
     let mut reset_button =
-        crate::ui::Button::eager(&button_style, s, "Reset").on_click(|s: &mut State| {
+        crate::ui::Button::lazy(&button_style, s, "Reset").on_click(|s: &mut State| {
             *s = State::Stopped;
         });
 
+    let bg = Rgb111::black();
+    ctx.lcd.fill(bg);
     ctx.lcd.on().await;
     loop {
-        ctx.lcd.fill(Rgb111::black());
-
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let duration = match state {
@@ -97,18 +92,16 @@ pub async fn stopwatch(ctx: &mut Context) {
             secs % 60,
             (duration.as_millis() / 10) % 100,
         );
+        let time_text = textbox(time_text.as_str(), Size::new(80, 40), bg, sl);
 
         let (left_button, ticker) = match state {
             State::Stopped => (&mut start_button, &mut ticker_off),
             State::Running { .. } => (&mut stop_button, &mut ticker_on),
             State::Paused { .. } => (&mut start_button, &mut ticker_off),
         };
-        let mut layout = LinearLayout::vertical(
-            Chain::new(Text::new(time_text.as_str(), Point::zero(), sl)).append(
-                LinearLayout::horizontal(Chain::new(left_button).append(&mut reset_button))
-                    .arrange(),
-            ),
-        )
+        let mut layout = LinearLayout::vertical(Chain::new(time_text).append(
+            LinearLayout::horizontal(Chain::new(left_button).append(&mut reset_button)).arrange(),
+        ))
         .with_alignment(horizontal::Center)
         .with_spacing(embedded_layout::layout::linear::FixedMargin(5))
         .arrange()
@@ -118,15 +111,24 @@ pub async fn stopwatch(ctx: &mut Context) {
             vertical::Center,
         );
 
+        let t = crate::PerfTimer::start("draw");
         layout.draw(&mut *ctx.lcd).unwrap();
+        t.stop();
 
+        let t = crate::PerfTimer::start("present");
+        let t2 = crate::PerfTimer::start("touch");
         match ctx
             .lcd
-            .present_and(select::select3(
-                ctx.button.wait_for_press(),
-                touch.wait_for_action(),
-                ticker.next(),
-            ))
+            .present_and(async {
+                let res = select::select3(
+                    ctx.button.wait_for_press(),
+                    touch.wait_for_action(),
+                    ticker.next(),
+                )
+                .await;
+                t2.stop();
+                res
+            })
             .await
         {
             select::Either3::First(_d) => {
@@ -137,5 +139,6 @@ pub async fn stopwatch(ctx: &mut Context) {
             }
             select::Either3::Third(_) => {}
         }
+        t.stop();
     }
 }

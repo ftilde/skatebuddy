@@ -177,6 +177,7 @@ impl Display {
             if let Some(buffer_to_present) = buffer.lines_for_update() {
                 use embedded_hal_async::spi::SpiDevice;
                 spi.transaction(&mut [
+                    embedded_hal_async::spi::Operation::DelayNs(6_000),
                     embedded_hal_async::spi::Operation::Write(&buffer_to_present),
                     embedded_hal_async::spi::Operation::DelayNs(10_000),
                 ])
