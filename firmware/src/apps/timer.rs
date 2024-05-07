@@ -5,12 +5,7 @@ use drivers::{
     time::{Duration, Instant, Ticker},
     Context,
 };
-use embedded_graphics::{
-    geometry::{Point, Size},
-    mono_font::MonoTextStyle,
-    text::Text,
-    Drawable as _,
-};
+use embedded_graphics::{geometry::Size, mono_font::MonoTextStyle, Drawable as _};
 use embedded_layout::{
     align::{horizontal, vertical, Align as _},
     layout::linear::LinearLayout,
@@ -19,7 +14,7 @@ use embedded_layout::{
 
 use crate::{
     render_top_bar,
-    ui::{ButtonStyle, EventHandler as _, TouchResult},
+    ui::{textbox, ButtonStyle, EventHandler as _, TouchResult},
 };
 
 #[derive(Copy, Clone)]
@@ -61,25 +56,22 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
 
     let s = Size::new(150, 100);
 
-    let mut dismiss_btn = crate::ui::Button::new(&button_style, s, "Dismiss");
+    let mut dismiss_btn = crate::ui::Button::lazy(&button_style, s, "Dismiss");
     let _buzz = ctx.buzzer.on();
 
     ctx.lcd.on().await;
 
-    loop {
-        ctx.lcd.fill(Rgb111::black());
+    let bg = Rgb111::black();
+    ctx.lcd.fill(bg);
 
+    loop {
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
-        let message = Text::new(msg, Point::zero(), sl);
+        let message = textbox(msg, Size::new(100, 50), bg, sl);
 
         let layout = LinearLayout::vertical(Chain::new(message).append(&mut dismiss_btn))
             .with_alignment(horizontal::Center)
             .arrange()
-            .align_to(
-                &drivers::lpm013m1126c::DISPLAY_AREA,
-                horizontal::Center,
-                vertical::Center,
-            );
+            .align_to(&crate::BELOW_BAR_AREA, horizontal::Center, vertical::Center);
         layout.draw(&mut *ctx.lcd).unwrap();
         match ctx
             .lcd
@@ -120,36 +112,36 @@ async fn configure_timer(ctx: &mut Context, timer_duration: &mut Duration) -> Fl
     let s = Size::new(50, 50);
 
     let mut plus_5min =
-        crate::ui::Button::new(&button_style, s, "+5 min").on_click(|s: &mut Duration| {
+        crate::ui::Button::lazy(&button_style, s, "+5 min").on_click(|s: &mut Duration| {
             *s += Duration::from_secs(5 * 60);
             Flow::Continue
         });
     let mut minus_5min =
-        crate::ui::Button::new(&button_style, s, "-5 min").on_click(|s: &mut Duration| {
+        crate::ui::Button::lazy(&button_style, s, "-5 min").on_click(|s: &mut Duration| {
             *s = s
                 .checked_sub(Duration::from_secs(5 * 60))
                 .unwrap_or(Duration::from_secs(0));
             Flow::Continue
         });
     let mut plus_1min =
-        crate::ui::Button::new(&button_style, s, "+1 min").on_click(|s: &mut Duration| {
+        crate::ui::Button::lazy(&button_style, s, "+1 min").on_click(|s: &mut Duration| {
             *s += Duration::from_secs(60);
             Flow::Continue
         });
     let mut minus_1min =
-        crate::ui::Button::new(&button_style, s, "-1 min").on_click(|s: &mut Duration| {
+        crate::ui::Button::lazy(&button_style, s, "-1 min").on_click(|s: &mut Duration| {
             *s = s
                 .checked_sub(Duration::from_secs(60))
                 .unwrap_or(Duration::from_secs(0));
             Flow::Continue
         });
     let mut plus_1s =
-        crate::ui::Button::new(&button_style, s, "+1 min").on_click(|s: &mut Duration| {
+        crate::ui::Button::lazy(&button_style, s, "+1 sec").on_click(|s: &mut Duration| {
             *s += Duration::from_secs(1);
             Flow::Continue
         });
     let mut minus_1s =
-        crate::ui::Button::new(&button_style, s, "-1 min").on_click(|s: &mut Duration| {
+        crate::ui::Button::lazy(&button_style, s, "-1 sec").on_click(|s: &mut Duration| {
             *s = s
                 .checked_sub(Duration::from_secs(1))
                 .unwrap_or(Duration::from_secs(0));
@@ -157,19 +149,21 @@ async fn configure_timer(ctx: &mut Context, timer_duration: &mut Duration) -> Fl
         });
 
     let mut start_button =
-        crate::ui::Button::new(&button_style, s, "Start").on_click(|_s: &mut Duration| Flow::Stop);
+        crate::ui::Button::lazy(&button_style, s, "Start").on_click(|_s: &mut Duration| Flow::Stop);
 
     ctx.lcd.on().await;
 
-    loop {
-        ctx.lcd.fill(Rgb111::black());
+    let bg = Rgb111::black();
+    ctx.lcd.fill(bg);
 
+    loop {
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let secs = timer_duration.as_secs();
         let time_text = arrform!(10, "{}:{:0>2}", secs / 60, secs % 60,);
 
-        let time_text = Text::new(time_text.as_str(), Point::zero(), sl);
+        //let time_text = Background(bg, Text::new(time_text.as_str(), Point::zero(), sl));
+        let time_text = textbox(time_text.as_str(), Size::new(100, 50), bg, sl);
         let mut layout = LinearLayout::vertical(
             Chain::new(
                 LinearLayout::horizontal(Chain::new(time_text).append(&mut start_button))
@@ -197,11 +191,8 @@ async fn configure_timer(ctx: &mut Context, timer_duration: &mut Duration) -> Fl
         )
         .with_alignment(horizontal::Center)
         .arrange()
-        .align_to(
-            &drivers::lpm013m1126c::DISPLAY_AREA,
-            horizontal::Center,
-            vertical::Center,
-        );
+        .align_to(&crate::BELOW_BAR_AREA, horizontal::Center, vertical::Center);
+
         layout.draw(&mut *ctx.lcd).unwrap();
         match ctx
             .lcd
@@ -251,7 +242,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
     let s = Size::new(80, 80);
 
     let mut resume_button =
-        crate::ui::Button::new(&button_style, s, "Resume").on_click(|s: &mut Mode| {
+        crate::ui::Button::lazy(&button_style, s, "Resume").on_click(|s: &mut Mode| {
             let time_left = match *s {
                 Mode::Running { .. } => panic!("Invalid state"),
                 Mode::Paused { time_left } => time_left,
@@ -263,7 +254,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
         });
 
     let mut stop_button =
-        crate::ui::Button::new(&button_style, s, "Pause").on_click(|s: &mut Mode| {
+        crate::ui::Button::lazy(&button_style, s, "Pause").on_click(|s: &mut Mode| {
             let Mode::Running { end } = *s else {
                 panic!("Invalid state to stop");
             };
@@ -277,13 +268,14 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
         });
 
     let mut reset_button =
-        crate::ui::Button::new(&button_style, s, "Reset").on_click(|_s: &mut Mode| Flow::Stop);
+        crate::ui::Button::lazy(&button_style, s, "Reset").on_click(|_s: &mut Mode| Flow::Stop);
 
     ctx.lcd.on().await;
 
-    loop {
-        ctx.lcd.fill(Rgb111::black());
+    let bg = Rgb111::black();
+    ctx.lcd.fill(bg);
 
+    loop {
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let time_left = match state {
@@ -299,7 +291,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
             Mode::Running { .. } => &mut stop_button,
             Mode::Paused { .. } => &mut resume_button,
         };
-        let time_text = Text::new(time_text.as_str(), Point::zero(), sl);
+        let time_text = textbox(time_text.as_str(), Size::new(100, 50), bg, sl);
         if time_left == Duration::from_secs(0) {
             break TimerResult::Finished;
         }
@@ -309,11 +301,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
         .with_alignment(horizontal::Center)
         .with_spacing(embedded_layout::layout::linear::FixedMargin(5))
         .arrange()
-        .align_to(
-            &drivers::lpm013m1126c::DISPLAY_AREA,
-            horizontal::Center,
-            vertical::Center,
-        );
+        .align_to(&crate::BELOW_BAR_AREA, horizontal::Center, vertical::Center);
         layout.draw(&mut *ctx.lcd).unwrap();
         match ctx
             .lcd

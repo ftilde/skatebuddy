@@ -118,7 +118,7 @@ pub async fn settings_ui(ctx: &mut Context) {
     });
 
     let mut save_button =
-        Button::new(&button_style, Size::new(2 * w, 2 * h), "Save").on_click(|_ctx| Action::Stop);
+        Button::eager(&button_style, Size::new(2 * w, 2 * h), "Save").on_click(|_ctx| Action::Stop);
 
     //let mut hours_label =
     //    crate::ui::Label::new(arrform!(3, "{:>3}", settings.utc_offset_hours), sl);

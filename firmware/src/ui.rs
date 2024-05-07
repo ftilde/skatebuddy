@@ -1,10 +1,15 @@
+use core::cell::Cell;
+
 use arrform::ArrForm;
 use embedded_graphics::{
     mono_font::{MonoFont, MonoTextStyle},
     pixelcolor::BinaryColor,
     prelude::*,
     primitives::Rectangle,
-    text::{renderer::TextRenderer, Text},
+    text::{
+        renderer::{CharacterStyle, TextRenderer},
+        Text,
+    },
 };
 use embedded_layout::layout::linear::LinearLayout;
 use embedded_text::{alignment::HorizontalAlignment, style::TextBoxStyleBuilder, TextBox};
@@ -26,6 +31,16 @@ pub trait EventHandler<Context, R> {
 impl<C, Context, R> EventHandler<Context, R> for Text<'_, C> {
     fn touch(&mut self, _e: TouchEvent, _ctx: &mut Context) -> TouchResult<R> {
         TouchResult::Continue
+    }
+}
+impl<S: TextRenderer, Context, R> EventHandler<Context, R> for TextBox<'_, S> {
+    fn touch(&mut self, _e: TouchEvent, _ctx: &mut Context) -> TouchResult<R> {
+        TouchResult::Continue
+    }
+}
+impl<C, Context, R, D: EventHandler<Context, R>> EventHandler<Context, R> for Background<D, C> {
+    fn touch(&mut self, e: TouchEvent, ctx: &mut Context) -> TouchResult<R> {
+        self.1.touch(e, ctx)
     }
 }
 impl<Context, R, I: EventHandler<Context, R>> EventHandler<Context, R>
@@ -98,9 +113,36 @@ enum ButtonState {
     Up,
 }
 
+enum RenderPolicy {
+    Eager,
+    Lazy { changed: Cell<bool> },
+}
+
+impl RenderPolicy {
+    fn should_render(&self) -> bool {
+        match self {
+            RenderPolicy::Eager => true,
+            RenderPolicy::Lazy { changed } => changed.get(),
+        }
+    }
+    fn notice_rendered(&self) {
+        match self {
+            RenderPolicy::Eager => {}
+            RenderPolicy::Lazy { changed } => changed.set(false),
+        }
+    }
+    fn notice_state_changed(&self) {
+        match self {
+            RenderPolicy::Eager => {}
+            RenderPolicy::Lazy { changed } => changed.set(true),
+        }
+    }
+}
+
 pub struct Button<'a, 'b, C> {
     def: ButtonDefinition<'a, 'b, C>,
     state: ButtonState,
+    render_policy: RenderPolicy,
 }
 
 impl<'a, 'b, C: PixelColor> From<ButtonDefinition<'a, 'b, C>> for Button<'a, 'b, C> {
@@ -108,21 +150,33 @@ impl<'a, 'b, C: PixelColor> From<ButtonDefinition<'a, 'b, C>> for Button<'a, 'b,
         Self {
             def,
             state: ButtonState::Up,
+            render_policy: RenderPolicy::Eager,
         }
     }
 }
 
 impl<'a, 'b, C: PixelColor> Button<'a, 'b, C> {
-    pub fn new(style: &'a ButtonStyle<'b, C>, size: Size, text: &'a str) -> Self {
+    pub fn eager(style: &'a ButtonStyle<'b, C>, size: Size, text: &'a str) -> Self {
         Self {
             def: ButtonDefinition::new(style, size, text),
             state: ButtonState::Up,
+            render_policy: RenderPolicy::Eager,
+        }
+    }
+    pub fn lazy(style: &'a ButtonStyle<'b, C>, size: Size, text: &'a str) -> Self {
+        Self {
+            def: ButtonDefinition::new(style, size, text),
+            state: ButtonState::Up,
+            render_policy: RenderPolicy::Lazy {
+                changed: true.into(),
+            },
         }
     }
 
     pub fn clicked(&mut self, evt: &TouchEvent) -> bool {
         let bounds = self.def.rect();
         if bounds.contains(evt.point()) {
+            self.render_policy.notice_state_changed();
             match (evt.kind, evt.gesture) {
                 (EventKind::Press | EventKind::Hold, _) => {
                     self.state = ButtonState::Down;
@@ -159,6 +213,10 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
     where
         D: DrawTarget<Color = C, Error = E>,
     {
+        if !self.render_policy.should_render() {
+            return Ok(());
+        }
+
         let (bg, fg) = match self.state {
             ButtonState::Down => (self.def.style.highlight, self.def.style.fill),
             ButtonState::Up => (self.def.style.fill, self.def.style.highlight),
@@ -184,6 +242,8 @@ impl<'a, 'b, C: PixelColor + Default> Button<'a, 'b, C> {
 
         bounds.into_styled(style).draw(target)?;
         text_box.draw(target)?;
+
+        self.render_policy.notice_rendered();
         Ok(())
     }
 }
@@ -252,6 +312,35 @@ impl<'r, 'a, 'b, C: PixelColor, Context, R> EventHandler<Context, R>
         } else {
             TouchResult::Continue
         }
+    }
+}
+
+pub struct Background<D, C>(pub C, pub D);
+
+impl<O, C: PixelColor, D: Drawable<Color = C, Output = O> + Dimensions> embedded_graphics::Drawable
+    for Background<D, C>
+{
+    type Color = C;
+
+    type Output = O;
+
+    fn draw<T>(&self, target: &mut T) -> Result<Self::Output, T::Error>
+    where
+        T: DrawTarget<Color = Self::Color>,
+    {
+        let bounds = self.1.bounding_box();
+        target.fill_solid(&bounds, self.0)?;
+        self.1.draw(target)
+    }
+}
+
+impl<C, D: embedded_layout::View> embedded_layout::View for Background<D, C> {
+    fn translate_impl(&mut self, by: Point) {
+        self.1.translate_impl(by)
+    }
+
+    fn bounds(&self) -> Rectangle {
+        self.1.bounds()
     }
 }
 
@@ -376,4 +465,23 @@ impl<S: TextRenderer<Color = BinaryColor> + Clone> core::fmt::Write for TextWrit
         self.write(s);
         Ok(())
     }
+}
+
+pub fn textbox<'a, S: TextRenderer + CharacterStyle, C: PixelColor>(
+    text: &'a str,
+    size: Size,
+    bg: C,
+    sl: S,
+) -> Background<TextBox<'a, S>, C> {
+    let mut text = embedded_text::TextBox::new(
+        text,
+        Rectangle {
+            top_left: Point::zero(),
+            size,
+        },
+        sl,
+    );
+    text.style.alignment = HorizontalAlignment::Center;
+    text.style.vertical_alignment = embedded_text::alignment::VerticalAlignment::Middle;
+    Background(bg, text)
 }

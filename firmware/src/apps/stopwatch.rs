@@ -51,7 +51,7 @@ pub async fn stopwatch(ctx: &mut Context) {
     let s = Size::new(w, h);
 
     let mut start_button =
-        crate::ui::Button::new(&button_style, s, "Start").on_click(|s: &mut State| {
+        crate::ui::Button::eager(&button_style, s, "Start").on_click(|s: &mut State| {
             let duration_so_far = match *s {
                 State::Stopped => Duration::from_secs(0),
                 State::Running { .. } => panic!("Invalid state"),
@@ -63,7 +63,7 @@ pub async fn stopwatch(ctx: &mut Context) {
         });
 
     let mut stop_button =
-        crate::ui::Button::new(&button_style, s, "Stop").on_click(|s: &mut State| {
+        crate::ui::Button::eager(&button_style, s, "Stop").on_click(|s: &mut State| {
             let State::Running { since } = *s else {
                 panic!("Invalid state to stop");
             };
@@ -74,7 +74,7 @@ pub async fn stopwatch(ctx: &mut Context) {
         });
 
     let mut reset_button =
-        crate::ui::Button::new(&button_style, s, "Reset").on_click(|s: &mut State| {
+        crate::ui::Button::eager(&button_style, s, "Reset").on_click(|s: &mut State| {
             *s = State::Stopped;
         });
 
