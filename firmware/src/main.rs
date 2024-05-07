@@ -42,10 +42,18 @@ use embedded_graphics::text::Text;
 use drivers::lpm013m1126c::{BWConfig, Rgb111};
 
 use drivers::futures::select;
-use drivers::time::{Duration, Timer};
+use drivers::time::{Duration, Instant, Timer};
 
 type Filesystem<'a, 'b> = littlefs2::fs::Filesystem<'a, drivers::flash::Flash<'b>>;
 
+pub const BELOW_BAR_AREA: embedded_graphics::primitives::Rectangle =
+    embedded_graphics::primitives::Rectangle::new(
+        Point::new(0, 16),
+        Size::new(
+            drivers::lpm013m1126c::WIDTH as _,
+            (drivers::lpm013m1126c::HEIGHT - 16) as _,
+        ),
+    );
 async fn render_top_bar(lcd: &mut drivers::display::Display, bat: &drivers::battery::AsyncBattery) {
     let bw_config = BWConfig {
         off: Rgb111::black(),
@@ -369,4 +377,24 @@ fn main() -> ! {
             app_menu(&mut ctx).await;
         }
     });
+}
+
+pub struct PerfTimer {
+    start: Instant,
+    what: &'static str,
+}
+
+impl PerfTimer {
+    pub fn start(what: &'static str) -> Self {
+        Self {
+            start: Instant::now(),
+            what,
+        }
+    }
+    pub fn stop(self) {}
+}
+impl Drop for PerfTimer {
+    fn drop(&mut self) {
+        crate::println!("{}, {}ms", self.what, self.start.elapsed().as_millis());
+    }
 }
