@@ -256,6 +256,7 @@ async fn system_menu(ctx: &mut Context) {
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,
+                &mut ctx.backlight,
                 options.as_slice(),
             )
             .await
@@ -307,6 +308,7 @@ async fn app_menu(ctx: &mut Context) {
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,
+                &mut ctx.backlight,
                 options.as_slice(),
             )
             .await

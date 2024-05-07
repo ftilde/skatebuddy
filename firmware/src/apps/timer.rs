@@ -45,6 +45,7 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    ctx.backlight.active().await;
 
     let mut ticker = Ticker::every(Duration::from_secs(1));
 
@@ -86,6 +87,7 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
                 break;
             }
             select::Either3::Second(e) => {
+                ctx.backlight.active().await;
                 if dismiss_btn.clicked(&e) {
                     break;
                 }
@@ -207,6 +209,7 @@ async fn configure_timer(ctx: &mut Context, timer_duration: &mut Duration) -> Fl
                 break Flow::Stop;
             }
             select::Either3::Second(e) => {
+                ctx.backlight.active().await;
                 if let TouchResult::Done(Flow::Stop) = layout.touch(e, timer_duration) {
                     break Flow::Continue;
                 }
@@ -226,6 +229,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    ctx.backlight.active().await;
 
     let mut ticker = Ticker::every(Duration::from_secs(1));
 
@@ -316,6 +320,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
                 break TimerResult::Interrupted;
             }
             select::Either3::Second(e) => {
+                ctx.backlight.active().await;
                 if let TouchResult::Done(Flow::Stop) = layout.touch(e, &mut state) {
                     break TimerResult::Interrupted;
                 }

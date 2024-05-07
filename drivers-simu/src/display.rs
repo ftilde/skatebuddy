@@ -1,7 +1,14 @@
 use embassy_futures::join;
 use futures::Future;
+use smol::{
+    channel::{Receiver, Sender},
+    Timer,
+};
+
+use crate::window::WindowHandle;
 
 use super::lpm013m1126c::{self, Buffer};
+use drivers_shared::display::*;
 
 pub struct Display {
     buffer: lpm013m1126c::Buffer,
@@ -63,20 +70,33 @@ impl Display {
 }
 
 pub struct Backlight {
-    pub window: crate::window::WindowHandle,
+    sender: Sender<BacklightCmd>,
+    _task: smol::Task<()>,
 }
 
 impl Backlight {
-    pub async fn set_on(&mut self) {
-        let mut window = self.window.lock().unwrap();
-        window.backlight_on = true;
-        window.update_window();
+    pub fn new(executor: &smol::LocalExecutor, window: crate::window::WindowHandle) -> Self {
+        let (sender, receiver) = smol::channel::bounded(1);
+        let _task = executor.spawn(async move {
+            drive_backlight(receiver, window).await;
+        });
+        Self { sender, _task }
+    }
+    async fn set_on(&mut self) {
+        self.sender.send(BacklightCmd::On).await.unwrap();
     }
 
     pub async fn set_off(&mut self) {
-        let mut window = self.window.lock().unwrap();
-        window.backlight_on = false;
-        window.update_window();
+        self.sender.send(BacklightCmd::Off).await.unwrap();
+    }
+
+    pub async fn active(&mut self) {
+        self.sender
+            .send(BacklightCmd::ActiveFor {
+                secs: DEFAULT_ACTIVE_DURATION,
+            })
+            .await
+            .unwrap();
     }
 
     #[must_use]
@@ -93,5 +113,47 @@ pub struct BacklightOn<'a> {
 impl Drop for BacklightOn<'_> {
     fn drop(&mut self) {
         crate::futures::block_on(self.bl.set_off());
+    }
+}
+
+async fn drive_backlight(receiver: Receiver<BacklightCmd>, window: WindowHandle) {
+    let mut turn_off_after = None;
+    loop {
+        let v = if let Some(turn_off_after) = turn_off_after.take() {
+            match embassy_futures::select::select(
+                receiver.recv(),
+                Timer::after(std::time::Duration::from_secs(turn_off_after as _)),
+            )
+            .await
+            {
+                embassy_futures::select::Either::First(v) => v,
+                embassy_futures::select::Either::Second(_) => {
+                    let mut window = window.lock().unwrap();
+                    window.backlight_on = false;
+                    window.update_window();
+                    continue;
+                }
+            }
+        } else {
+            receiver.recv().await
+        };
+        match v.unwrap() {
+            BacklightCmd::ActiveFor { secs } => {
+                turn_off_after = Some(secs);
+                let mut window = window.lock().unwrap();
+                window.backlight_on = true;
+                window.update_window();
+            }
+            BacklightCmd::Off => {
+                let mut window = window.lock().unwrap();
+                window.backlight_on = false;
+                window.update_window();
+            }
+            BacklightCmd::On => {
+                let mut window = window.lock().unwrap();
+                window.backlight_on = true;
+                window.update_window();
+            }
+        }
     }
 }

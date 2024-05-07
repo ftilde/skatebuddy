@@ -73,6 +73,7 @@ pub async fn settings_ui(ctx: &mut Context) {
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    ctx.backlight.active().await;
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
@@ -178,16 +179,19 @@ pub async fn settings_ui(ctx: &mut Context) {
                 break;
             }
             select::Either4::Third(_event) => {}
-            select::Either4::Fourth(e) => match layout.touch(e, &mut settings) {
-                crate::ui::TouchResult::Done(Action::Continue) => {
-                    settings.apply();
+            select::Either4::Fourth(e) => {
+                ctx.backlight.active().await;
+                match layout.touch(e, &mut settings) {
+                    crate::ui::TouchResult::Done(Action::Continue) => {
+                        settings.apply();
+                    }
+                    crate::ui::TouchResult::Done(Action::Stop) => {
+                        ctx.flash.with_fs(|fs| settings.save(fs)).await.unwrap();
+                        break;
+                    }
+                    crate::ui::TouchResult::Continue => {}
                 }
-                crate::ui::TouchResult::Done(Action::Stop) => {
-                    ctx.flash.with_fs(|fs| settings.save(fs)).await.unwrap();
-                    break;
-                }
-                crate::ui::TouchResult::Continue => {}
-            },
+            }
         }
     }
 }

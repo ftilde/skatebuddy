@@ -22,6 +22,7 @@ pub async fn stopwatch(ctx: &mut Context) {
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    ctx.backlight.active().await;
 
     let mut ticker_on = Ticker::every(Duration::from_millis(10));
     let mut ticker_off = Ticker::every(Duration::from_millis(1000));
@@ -136,6 +137,7 @@ pub async fn stopwatch(ctx: &mut Context) {
             }
             select::Either3::Second(e) => {
                 let _ = layout.touch(e, &mut state);
+                ctx.backlight.active().await;
             }
             select::Either3::Third(_) => {}
         }

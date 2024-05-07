@@ -120,7 +120,7 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     )
     .await;
 
-    let backlight = display::Backlight::new(p.P0_08);
+    let backlight = display::Backlight::new(&spawner, p.P0_08);
 
     let touch =
         touch::TouchRessources::new(p.P1_01, p.P1_02, p.P1_03, p.P1_04, &mut p.TWISPI0).await;

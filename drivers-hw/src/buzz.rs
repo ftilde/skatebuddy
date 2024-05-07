@@ -40,6 +40,7 @@ async fn buzz_task(pin: crate::hardware::vibrate::EN) {
     let mut pin = Output::new(pin, Level::Low, OutputDrive::Standard);
     loop {
         let cmd = BUZZ_SIG.wait().await;
+        BUZZ_SIG.reset();
 
         match cmd {
             BuzzCmd::On => pin.set_high(),

@@ -15,6 +15,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
 ) -> T {
     ctx.lcd.on().await;
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    ctx.backlight.active().await;
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
@@ -62,6 +63,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
         match evt {
             select::Either::First(_) => break 'outer button,
             select::Either::Second(e) => {
+                ctx.backlight.active().await;
                 crate::println!("BTN: {:?}", e);
                 for (btn, app) in &mut buttons {
                     if btn.clicked(&e) {
@@ -116,8 +118,10 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
     button: &mut drivers::button::Button,
     lcd: &mut drivers::display::Display,
     battery: &mut drivers::battery::AsyncBattery,
+    backlight: &mut drivers::display::Backlight,
     mut options: P,
 ) -> MenuSelection<T> {
+    backlight.active().await;
     lcd.on().await;
     let mut touch = touch.enabled(twi0).await;
 
@@ -173,6 +177,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
                 select::Either::First(_) => break 'outer MenuSelection::HardwareButton,
                 select::Either::Second(e) => {
                     crate::println!("BTN: {:?}", e);
+                    backlight.active().await;
                     for (btn, app) in &mut buttons {
                         if btn.clicked(&e) {
                             break 'outer MenuSelection::Item(app.clone());

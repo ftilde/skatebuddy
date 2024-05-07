@@ -2,6 +2,7 @@ use core::future::Future;
 
 use super::{hardware::lcd as hw, lpm013m1126c::Buffer};
 use crate::util::SpiDeviceWrapper;
+use drivers_shared::display::*;
 use embassy_nrf::{
     gpio::{Level, Output, OutputDrive},
     peripherals::SPI2,
@@ -19,6 +20,7 @@ enum ExcominCmd {
 }
 
 const DEFAULT_EXCOMIN_FREQ: u64 = 1;
+const HIGH_EXCOMIN_FREQ: u64 = 120;
 static EXTCOMIN_SIG: embassy_sync::signal::Signal<
     embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
     ExcominCmd,
@@ -195,35 +197,30 @@ impl Display {
 }
 
 pub struct Backlight {
-    level: Level,
-    pin: Output<'static, hw::BL>,
+    _marker: (),
 }
 
 impl Backlight {
-    pub(crate) fn new(pin: hw::BL) -> Self {
-        let level = Level::Low;
-        Self {
-            level,
-            pin: Output::new(pin, Level::Low, OutputDrive::Standard),
-        }
+    pub(crate) fn new(spawner: &embassy_executor::Spawner, pin: hw::BL) -> Self {
+        spawner.spawn(drive_backlight(pin)).unwrap();
+        Self { _marker: () }
     }
 
-    fn set(&mut self) {
-        self.pin.set_level(self.level);
-    }
-
-    pub async fn set_on(&mut self) {
-        EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(120));
+    async fn set_on(&mut self) {
+        BACKLIGHT_SIG.signal(BacklightCmd::On);
         crate::futures::yield_now().await;
-        self.level = Level::High;
-        self.set();
     }
 
     pub async fn set_off(&mut self) {
-        EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(DEFAULT_EXCOMIN_FREQ));
+        BACKLIGHT_SIG.signal(BacklightCmd::Off);
         crate::futures::yield_now().await;
-        self.level = Level::Low;
-        self.set();
+    }
+
+    pub async fn active(&mut self) {
+        BACKLIGHT_SIG.signal(BacklightCmd::ActiveFor {
+            secs: DEFAULT_ACTIVE_DURATION,
+        });
+        crate::futures::yield_now().await;
     }
 
     #[must_use]
@@ -231,14 +228,6 @@ impl Backlight {
         self.set_on().await;
         BacklightOn { bl: self }
     }
-
-    //pub fn toggle(&mut self) {
-    //    self.level = match self.level {
-    //        Level::Low => Level::High,
-    //        Level::High => Level::Low,
-    //    };
-    //    self.set();
-    //}
 }
 
 pub struct BacklightOn<'a> {
@@ -248,5 +237,52 @@ pub struct BacklightOn<'a> {
 impl Drop for BacklightOn<'_> {
     fn drop(&mut self) {
         crate::futures::block_on(self.bl.set_off());
+    }
+}
+
+static BACKLIGHT_SIG: embassy_sync::signal::Signal<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    BacklightCmd,
+> = embassy_sync::signal::Signal::new();
+
+#[embassy_executor::task]
+async fn drive_backlight(pin: hw::BL) {
+    let mut pin = Output::new(pin, Level::Low, OutputDrive::Standard);
+
+    let mut turn_off_after = None;
+    loop {
+        let v = if let Some(turn_off_after) = turn_off_after.take() {
+            match embassy_futures::select::select(
+                BACKLIGHT_SIG.wait(),
+                Timer::after_secs(turn_off_after as _),
+            )
+            .await
+            {
+                embassy_futures::select::Either::First(v) => v,
+                embassy_futures::select::Either::Second(_) => {
+                    EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(DEFAULT_EXCOMIN_FREQ));
+                    pin.set_low();
+                    continue;
+                }
+            }
+        } else {
+            BACKLIGHT_SIG.wait().await
+        };
+        BACKLIGHT_SIG.reset();
+        match v {
+            BacklightCmd::ActiveFor { secs } => {
+                turn_off_after = Some(secs);
+                EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(HIGH_EXCOMIN_FREQ));
+                pin.set_high();
+            }
+            BacklightCmd::Off => {
+                EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(DEFAULT_EXCOMIN_FREQ));
+                pin.set_low();
+            }
+            BacklightCmd::On => {
+                EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(HIGH_EXCOMIN_FREQ));
+                pin.set_high();
+            }
+        }
     }
 }

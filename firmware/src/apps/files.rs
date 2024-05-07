@@ -77,6 +77,7 @@ pub async fn files(ctx: &mut Context) {
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,
+                &mut ctx.backlight,
                 options,
             )
             .await
@@ -124,6 +125,7 @@ pub async fn file_menu(ctx: &mut Context, path: &Path) {
             &mut ctx.button,
             &mut ctx.lcd,
             &mut ctx.battery,
+            &mut ctx.backlight,
             options.as_slice(),
         )
         .await

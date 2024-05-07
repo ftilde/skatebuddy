@@ -93,9 +93,7 @@ pub fn run(main: impl Main) -> ! {
         flash: flash::FlashRessources::new(),
         battery: battery::AsyncBattery::new(&executor, window.clone()),
         button: button::Button::new(window.clone()),
-        backlight: display::Backlight {
-            window: window.clone(),
-        },
+        backlight: display::Backlight::new(&executor, window.clone()),
         lcd: display::Display::new(window.clone()),
         start_time: *time::BOOT,
         mag: mag::MagRessources {},
