@@ -291,6 +291,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
             Mode::Paused { time_left } => time_left,
         };
         let secs = time_left.as_secs();
+        let secs = secs + 1; // We want to show the last second as 0:01 instead of 0:00
         let time_text = arrform!(10, "{}:{:0>2}", secs / 60, secs % 60,);
 
         let left_button = match state {
