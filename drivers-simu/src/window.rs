@@ -33,7 +33,7 @@ impl Window {
         }
     }
     pub fn present(&mut self, buffer: &mut Buffer) {
-        if let Some(buf) = buffer.lines_for_update() {
+        for buf in buffer.lines_for_update() {
             let buf = &buf[..(buf.len() - lpm013m1126c::NUM_REQUIRED_SUFFIX_BYTES)];
             for line in buf.chunks(lpm013m1126c::NUM_BYTES_PER_ROW) {
                 assert_eq!(line.len(), lpm013m1126c::NUM_BYTES_PER_ROW);

@@ -1,5 +1,6 @@
 use core::ops::Range;
 
+use bitvec::prelude::*;
 use embedded_graphics::{pixelcolor::BinaryColor, prelude::*, primitives::Rectangle};
 
 pub const WIDTH: usize = 176;
@@ -21,17 +22,15 @@ pub const NUM_BYTES_PER_ROW: usize = WIDTH / NUM_PIXELS_PER_CELL + NUM_PREFIX_BY
 pub const NUM_REQUIRED_SUFFIX_BYTES: usize = 2; // We need 16 more clock cycles after the last row.
 
 pub struct Buffer {
-    min_row: u8,
-    max_row: u8,
     values: [u8; NUM_BYTES_PER_ROW * HEIGHT + NUM_REQUIRED_SUFFIX_BYTES],
+    changed: BitArray<[u32; 256 / 4]>,
 }
 
 impl Default for Buffer {
     fn default() -> Self {
         let mut ret = Self {
-            min_row: u8::MAX,
-            max_row: 0,
             values: core::array::from_fn(|_| 0),
+            changed: BitArray::default(),
         };
 
         // Init the first two bytes of every row in the buffer with:
@@ -65,8 +64,7 @@ impl Buffer {
             return;
         }
 
-        self.min_row = self.min_row.min(row as u8);
-        self.max_row = self.max_row.max(row as u8);
+        self.changed.set(row, true);
 
         let col_cell = col / NUM_PIXELS_PER_CELL;
 
@@ -89,8 +87,7 @@ impl Buffer {
         if row >= HEIGHT {
             return;
         }
-        self.min_row = self.min_row.min(row as u8);
-        self.max_row = self.max_row.max(row as u8);
+        self.changed.set(row, true);
 
         let mut col_begin = (col_begin.max(0) as usize).min(WIDTH);
         let col_end = (col_end.max(0) as usize).min(WIDTH);
@@ -113,8 +110,9 @@ impl Buffer {
         self.values[fill_begin_idx..fill_end_idx].fill(fill_val);
     }
     pub fn fill_lines(&mut self, val: Rgb111, lines: Range<usize>) {
-        self.min_row = self.min_row.min(lines.start as u8);
-        self.max_row = self.max_row.max((lines.end - 1) as u8);
+        for line in lines.start..lines.end {
+            self.changed.set(line, true);
+        }
 
         let nv = val.0 | val.0 << NUM_BITS_PER_PIXEL;
         assert!(lines.end <= HEIGHT);
@@ -138,18 +136,31 @@ impl Buffer {
         }
     }
 
-    pub fn lines_for_update(&mut self) -> Option<&[u8]> {
-        if self.max_row < self.min_row {
-            return None;
-        }
+    pub fn lines_for_update<'a>(&'a mut self) -> impl Iterator<Item = &'a [u8]> + 'a {
+        let mut row = 0;
 
-        let begin = self.min_row as usize * NUM_BYTES_PER_ROW;
-        let end = (self.max_row as usize + 1) * NUM_BYTES_PER_ROW + NUM_REQUIRED_SUFFIX_BYTES;
+        let values = &self.values;
+        let changed = &mut self.changed;
 
-        self.min_row = u8::MAX;
-        self.max_row = 0;
+        core::iter::from_fn(move || {
+            while !changed[row] && row < HEIGHT {
+                row += 1;
+            }
+            let begin = row;
+            while changed[row] && row < HEIGHT {
+                changed.set(row, false);
+                row += 1;
+            }
+            let end = row;
+            if begin != end {
+                let begin = begin as usize * NUM_BYTES_PER_ROW;
+                let end = end * NUM_BYTES_PER_ROW + NUM_REQUIRED_SUFFIX_BYTES;
 
-        Some(&self.values[begin..end])
+                Some(&values[begin..end])
+            } else {
+                None
+            }
+        })
     }
 }
 
