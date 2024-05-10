@@ -19,7 +19,7 @@ type I2CInstance = embassy_nrf::peripherals::TWISPI0;
 // From espruino. not documented anywhere else, afaik, though...
 const CMD_SLEEP: [u8; 2] = [0xE5, 0x03];
 
-// This is sleep mode according to official example code (but looks like standby???
+// This is sleep mode according to official example code (but looks like standby???)
 const CMD_STANDBY: [u8; 2] = [0xA5, 0x03];
 
 const CMD_READ_EVENT: [u8; 1] = [0x01];
@@ -60,7 +60,7 @@ impl TouchRessources {
         Touch {
             hw: self,
             instance: i2c,
-            state: State::WaitInterrupt,
+            mode: Mode::Standby,
         }
     }
 }
@@ -68,7 +68,7 @@ impl TouchRessources {
 pub struct Touch<'a> {
     hw: &'a mut TouchRessources,
     instance: &'a mut I2CInstance,
-    state: State,
+    mode: Mode,
 }
 
 fn build_i2c<'a>(
@@ -91,108 +91,123 @@ impl<'a> Drop for Touch<'a> {
 }
 
 #[derive(Copy, Clone)]
-enum State {
-    WaitInterrupt,
-    Read,
-    GoStandby,
+enum Mode {
+    Standby,
+    Dynamic,
 }
 
+//#[derive(Copy, Clone)]
+//enum State {
+//    WaitInterrupt,
+//    Read,
+//    GoStandby,
+//}
+
 impl<'a> Touch<'a> {
-    pub async fn wait_for_event(&mut self) -> TouchEvent {
-        loop {
-            match self.state {
-                State::WaitInterrupt => {
-                    self.hw.irq.wait_for_low().await;
-                    self.state = State::Read;
-                }
-                State::Read => {
-                    let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
-
-                    let mut buf = [0u8; 6];
-                    i2c.write_read(hw::ADDR, &CMD_READ_EVENT, &mut buf)
-                        .await
-                        .unwrap();
-
-                    let kind = EventKind::try_from(buf[2] >> 6).unwrap();
-
-                    let n_points = buf[1];
-                    let gesture = Gesture::try_from(buf[0]).unwrap();
-
-                    // Espruino adjusts these, but it seems like the range is actually [0, 175]?
-                    //let x = (buf[3] as usize * crate::lpm013m1126c::WIDTH / TOUCH_AREA_WIDTH) as u8;
-                    let x = buf[3];
-                    //let y = (buf[5] as usize * crate::lpm013m1126c::HEIGHT / TOUCH_AREA_HEIGHT) as u8;
-                    let y = buf[5];
-
-                    let event = TouchEvent {
-                        gesture,
-                        n_points,
-                        kind,
-                        x,
-                        y,
-                    };
-                    if let EventKind::Release = kind {
-                        self.state = State::GoStandby;
-                    } else {
-                        self.state = State::Read;
-                    }
-
-                    return event;
-                }
-                State::GoStandby => {
-                    let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
-                    i2c.write(hw::ADDR, &CMD_STANDBY).await.unwrap();
-                    self.state = State::WaitInterrupt;
-                }
-            }
-        }
-    }
     //pub async fn wait_for_event(&mut self) -> TouchEvent {
-    //    if let Mode::Standby = self.mode {
-    //        self.hw.irq.wait_for_low().await;
+    //    loop {
+    //        match self.state {
+    //            State::WaitInterrupt => {
+    //                self.hw.irq.wait_for_low().await;
+    //                self.state = State::Read;
+    //            }
+    //            State::Read => {
+    //                let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
+
+    //                let mut buf = [0u8; 6];
+    //                i2c.write_read(hw::ADDR, &CMD_READ_EVENT, &mut buf)
+    //                    .await
+    //                    .unwrap();
+
+    //                let kind = EventKind::try_from(buf[2] >> 6).unwrap();
+
+    //                let n_points = buf[1];
+    //                let gesture = Gesture::try_from(buf[0]).unwrap();
+
+    //                // Espruino adjusts these, but it seems like the range is actually [0, 175]?
+    //                //let x = (buf[3] as usize * crate::lpm013m1126c::WIDTH / TOUCH_AREA_WIDTH) as u8;
+    //                let x = buf[3];
+    //                //let y = (buf[5] as usize * crate::lpm013m1126c::HEIGHT / TOUCH_AREA_HEIGHT) as u8;
+    //                let y = buf[5];
+
+    //                let event = TouchEvent {
+    //                    gesture,
+    //                    n_points,
+    //                    kind,
+    //                    x,
+    //                    y,
+    //                };
+    //                if let EventKind::Release = kind {
+    //                    self.state = State::GoStandby;
+    //                } else {
+    //                    self.state = State::Read;
+    //                }
+
+    //                return event;
+    //            }
+    //            State::GoStandby => {
+    //                let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
+    //                i2c.write(hw::ADDR, &CMD_STANDBY).await.unwrap();
+    //                self.state = State::WaitInterrupt;
+    //            }
+    //        }
     //    }
-    //    self.mode = Mode::Dynamic;
-
-    //    let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
-
-    //    let mut buf = [0u8; 6];
-    //    i2c.write_read(hw::ADDR, &CMD_READ_EVENT, &mut buf)
-    //        .await
-    //        .unwrap();
-
-    //    let kind = EventKind::try_from(buf[2] >> 6).unwrap();
-
-    //    let n_points = buf[1];
-    //    let gesture = Gesture::try_from(buf[0]).unwrap();
-
-    //    // Espruino adjusts these, but it seems like the range is actually [0, 175]?
-    //    //let x = (buf[3] as usize * crate::lpm013m1126c::WIDTH / TOUCH_AREA_WIDTH) as u8;
-    //    let x = buf[3];
-    //    //let y = (buf[5] as usize * crate::lpm013m1126c::HEIGHT / TOUCH_AREA_HEIGHT) as u8;
-    //    let y = buf[5];
-
-    //    let event = TouchEvent {
-    //        gesture,
-    //        n_points,
-    //        kind,
-    //        x,
-    //        y,
-    //    };
-
-    //    if let EventKind::Release = kind {
-    //        self.mode = Mode::Standby;
-    //        i2c.write(hw::ADDR, &CMD_STANDBY).await.unwrap();
-    //    }
-
-    //    event
     //}
+
+    pub async fn wait_for_event(&mut self) -> TouchEvent {
+        if let Mode::Standby = self.mode {
+            if self.hw.irq.is_high() {
+                self.hw.irq.wait_for_low().await;
+            }
+        } else {
+            embassy_futures::yield_now().await;
+        }
+        self.mode = Mode::Dynamic;
+
+        let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
+
+        let mut buf = [0u8; 6];
+        i2c.blocking_write_read(hw::ADDR, &CMD_READ_EVENT, &mut buf)
+            .unwrap();
+
+        let kind = EventKind::try_from(buf[2] >> 6).unwrap();
+
+        let n_points = buf[1];
+        let gesture = Gesture::try_from(buf[0]).unwrap();
+
+        // Espruino adjusts these, but it seems like the range is actually [0, 175]?
+        //let x = (buf[3] as usize * crate::lpm013m1126c::WIDTH / TOUCH_AREA_WIDTH) as u8;
+        let x = buf[3];
+        //let y = (buf[5] as usize * crate::lpm013m1126c::HEIGHT / TOUCH_AREA_HEIGHT) as u8;
+        let y = buf[5];
+
+        let event = TouchEvent {
+            gesture,
+            n_points,
+            kind,
+            x,
+            y,
+        };
+
+        if EventKind::Release == kind && Gesture::None != gesture {
+            self.mode = Mode::Standby;
+            i2c.blocking_write(hw::ADDR, &CMD_STANDBY).unwrap();
+        }
+
+        event
+    }
 
     pub async fn wait_for_action(&mut self) -> TouchEvent {
         loop {
             let event = self.wait_for_event().await;
-            if EventKind::Press == event.kind {
+
+            // If we are too busy with other stuff we sometimes miss the Press event, so we also
+            // want to return Hold here. However, ...
+            if matches!(event.kind, EventKind::Press | EventKind::Hold) {
                 return event;
             }
+            // ... A release event without a gesture seems to always be followed by another release
+            // event of a specific gesture.
             if EventKind::Release == event.kind && event.gesture != Gesture::None {
                 return event;
             }
