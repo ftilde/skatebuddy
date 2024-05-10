@@ -5,7 +5,8 @@ use crate::util::SpiDeviceWrapper;
 use drivers_shared::display::*;
 use embassy_nrf::{
     gpio::{Level, Output, OutputDrive},
-    peripherals::SPI2,
+    peripherals::{PWM3, SPI2},
+    pwm::SimplePwm,
     spim,
 };
 use embassy_time::{Duration, Timer};
@@ -201,8 +202,8 @@ pub struct Backlight {
 }
 
 impl Backlight {
-    pub(crate) fn new(spawner: &embassy_executor::Spawner, pin: hw::BL) -> Self {
-        spawner.spawn(drive_backlight(pin)).unwrap();
+    pub(crate) fn new(spawner: &embassy_executor::Spawner, pin: hw::BL, pwm: PWM3) -> Self {
+        spawner.spawn(drive_backlight(pin, pwm)).unwrap();
         Self { _marker: () }
     }
 
@@ -245,9 +246,31 @@ static BACKLIGHT_SIG: embassy_sync::signal::Signal<
     BacklightCmd,
 > = embassy_sync::signal::Signal::new();
 
+enum BacklightState<'a> {
+    Off(Output<'a, hw::BL>),
+    #[allow(dead_code)] // Not sure why this is required here. Annoying...
+    On(SimplePwm<'a, PWM3>),
+}
+
+impl<'a> BacklightState<'a> {
+    fn off(pin: &'a mut hw::BL) -> Self {
+        BacklightState::Off(Output::new(pin, Level::Low, OutputDrive::Standard))
+    }
+
+    fn on(pwm: &'a mut PWM3, pin: &'a mut hw::BL) -> Self {
+        let mut pwm = SimplePwm::new_1ch(pwm, pin);
+        let max_duty = 10000;
+        pwm.set_max_duty(max_duty);
+        pwm.set_duty(0, max_duty - max_duty / 10);
+        BacklightState::On(pwm)
+    }
+}
+
 #[embassy_executor::task]
-async fn drive_backlight(pin: hw::BL) {
-    let mut pin = Output::new(pin, Level::Low, OutputDrive::Standard);
+async fn drive_backlight(mut pin: hw::BL, mut pwm: PWM3) {
+    let pin = &mut pin;
+    let pwm = &mut pwm;
+    let mut _state = BacklightState::off(pin);
 
     let mut turn_off_after = None;
     loop {
@@ -261,7 +284,10 @@ async fn drive_backlight(pin: hw::BL) {
                 embassy_futures::select::Either::First(v) => v,
                 embassy_futures::select::Either::Second(_) => {
                     EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(DEFAULT_EXCOMIN_FREQ));
-                    pin.set_low();
+                    if !matches!(_state, BacklightState::Off(..)) {
+                        core::mem::drop(_state);
+                        _state = BacklightState::off(pin);
+                    }
                     continue;
                 }
             }
@@ -273,15 +299,24 @@ async fn drive_backlight(pin: hw::BL) {
             BacklightCmd::ActiveFor { secs } => {
                 turn_off_after = Some(secs);
                 EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(HIGH_EXCOMIN_FREQ));
-                pin.set_high();
+                if !matches!(_state, BacklightState::On(..)) {
+                    core::mem::drop(_state);
+                    _state = BacklightState::on(pwm, pin);
+                }
             }
             BacklightCmd::Off => {
                 EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(DEFAULT_EXCOMIN_FREQ));
-                pin.set_low();
+                if !matches!(_state, BacklightState::Off(..)) {
+                    core::mem::drop(_state);
+                    _state = BacklightState::off(pin);
+                }
             }
             BacklightCmd::On => {
                 EXTCOMIN_SIG.signal(ExcominCmd::SetFreq(HIGH_EXCOMIN_FREQ));
-                pin.set_high();
+                if !matches!(_state, BacklightState::On(..)) {
+                    core::mem::drop(_state);
+                    _state = BacklightState::on(pwm, pin);
+                }
             }
         }
     }
