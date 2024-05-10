@@ -3,9 +3,10 @@ use embassy_nrf::{
     gpio::{Input, Level, Output, OutputDrive, Pull},
     twim,
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Duration, Instant, Timer};
 
 pub use drivers_shared::touch::*;
+use embedded_hal::blocking::delay::DelayMs;
 
 pub struct TouchRessources {
     scl: hw::SCL,
@@ -61,6 +62,7 @@ impl TouchRessources {
             hw: self,
             instance: i2c,
             mode: Mode::Standby,
+            enabled_at: Instant::now(),
         }
     }
 }
@@ -69,6 +71,7 @@ pub struct Touch<'a> {
     hw: &'a mut TouchRessources,
     instance: &'a mut I2CInstance,
     mode: Mode,
+    enabled_at: Instant,
 }
 
 fn build_i2c<'a>(
@@ -85,6 +88,14 @@ fn build_i2c<'a>(
 
 impl<'a> Drop for Touch<'a> {
     fn drop(&mut self) {
+        // Sleeping to early after reseting touch interface leads to i2c connection problems
+        let delay = Duration::from_millis(50);
+        let safe_to_sleep = self.enabled_at + delay;
+        let now = Instant::now();
+        if now < safe_to_sleep {
+            embassy_time::Delay.delay_ms((safe_to_sleep - now).as_millis() as u32);
+        }
+
         let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
         i2c.blocking_write(hw::ADDR, &CMD_SLEEP).unwrap();
     }
