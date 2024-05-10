@@ -37,7 +37,6 @@ pub async fn stopwatch(ctx: &mut Context) {
         Paused { so_far: Duration },
     }
 
-    let timeout_on = Duration::from_millis(10);
     let timeout_off = Duration::from_millis(1000);
 
     let mut state = State::Stopped;
@@ -94,6 +93,12 @@ pub async fn stopwatch(ctx: &mut Context) {
             (duration.as_millis() / 10) % 100,
         );
         let time_text = textbox(time_text.as_str(), Size::new(80, 40), bg, sl);
+
+        let timeout_on = if secs < 60 {
+            Duration::from_millis(10)
+        } else {
+            Duration::from_millis(1000)
+        };
 
         let (left_button, timeout) = match state {
             State::Stopped | State::Paused { .. } => (&mut start_button, timeout_off),
