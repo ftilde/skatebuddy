@@ -2,7 +2,7 @@ use arrform::*;
 use drivers::{
     futures::select,
     lpm013m1126c::Rgb111,
-    time::{Duration, Instant, Ticker},
+    time::{Duration, Instant, Timer},
     Context,
 };
 use embedded_graphics::{geometry::Size, mono_font::MonoTextStyle, Drawable as _};
@@ -24,9 +24,6 @@ pub async fn stopwatch(ctx: &mut Context) {
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
     ctx.backlight.active().await;
 
-    let mut ticker_on = Ticker::every(Duration::from_millis(10));
-    let mut ticker_off = Ticker::every(Duration::from_millis(1000));
-
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
         highlight: Rgb111::white(),
@@ -39,6 +36,9 @@ pub async fn stopwatch(ctx: &mut Context) {
         Running { since: Instant },
         Paused { so_far: Duration },
     }
+
+    let timeout_on = Duration::from_millis(10);
+    let timeout_off = Duration::from_millis(1000);
 
     let mut state = State::Stopped;
 
@@ -95,10 +95,9 @@ pub async fn stopwatch(ctx: &mut Context) {
         );
         let time_text = textbox(time_text.as_str(), Size::new(80, 40), bg, sl);
 
-        let (left_button, ticker) = match state {
-            State::Stopped => (&mut start_button, &mut ticker_off),
-            State::Running { .. } => (&mut stop_button, &mut ticker_on),
-            State::Paused { .. } => (&mut start_button, &mut ticker_off),
+        let (left_button, timeout) = match state {
+            State::Stopped | State::Paused { .. } => (&mut start_button, timeout_off),
+            State::Running { .. } => (&mut stop_button, timeout_on),
         };
         let mut layout = LinearLayout::vertical(Chain::new(time_text).append(
             LinearLayout::horizontal(Chain::new(left_button).append(&mut reset_button)).arrange(),
@@ -116,7 +115,6 @@ pub async fn stopwatch(ctx: &mut Context) {
         layout.draw(&mut *ctx.lcd).unwrap();
         t.stop();
 
-        let t = crate::PerfTimer::start("present");
         let t2 = crate::PerfTimer::start("touch");
         match ctx
             .lcd
@@ -124,7 +122,7 @@ pub async fn stopwatch(ctx: &mut Context) {
                 let res = select::select3(
                     ctx.button.wait_for_press(),
                     touch.wait_for_action(),
-                    ticker.next(),
+                    Timer::after(timeout),
                 )
                 .await;
                 t2.stop();
@@ -141,6 +139,5 @@ pub async fn stopwatch(ctx: &mut Context) {
             }
             select::Either3::Third(_) => {}
         }
-        t.stop();
     }
 }
