@@ -9,17 +9,31 @@ impl Buzzer {
         Self { _marker: () }
     }
 
-    pub fn on<'a>(&'a mut self) -> BuzzGuard<'a> {
+    pub fn on<'a>(&'a mut self) -> BuzzHandle<'a> {
         send_cmd(BuzzCmd::On);
-        BuzzGuard { _inner: self }
+        BuzzHandle { _inner: self }
     }
 }
 
-pub struct BuzzGuard<'a> {
+pub struct BuzzHandle<'a> {
     _inner: &'a mut Buzzer,
 }
 
-impl Drop for BuzzGuard<'_> {
+impl BuzzHandle<'_> {
+    pub fn on(&mut self) {
+        send_cmd(BuzzCmd::On);
+    }
+
+    pub fn off(&mut self) {
+        send_cmd(BuzzCmd::On);
+    }
+
+    pub fn pattern(&mut self, pat: [u8; 7]) {
+        send_cmd(BuzzCmd::Pattern(pat));
+    }
+}
+
+impl Drop for BuzzHandle<'_> {
     fn drop(&mut self) {
         send_cmd(BuzzCmd::Off);
     }

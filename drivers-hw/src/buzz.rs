@@ -1,5 +1,6 @@
 pub use drivers_shared::buzz::*;
 use embassy_nrf::gpio::{Level, Output, OutputDrive};
+use embassy_time::Timer;
 
 pub struct Buzzer {
     _marker: (),
@@ -14,19 +15,33 @@ impl Buzzer {
         Self { _marker: () }
     }
 
-    pub fn on<'a>(&'a mut self) -> BuzzGuard<'a> {
+    pub fn on<'a>(&'a mut self) -> BuzzHandle<'a> {
         BUZZ_SIG.signal(BuzzCmd::On);
-        BuzzGuard { _inner: self }
+        BuzzHandle { _inner: self }
     }
 }
 
-pub struct BuzzGuard<'a> {
+pub struct BuzzHandle<'a> {
     _inner: &'a mut Buzzer,
 }
 
-impl Drop for BuzzGuard<'_> {
+impl Drop for BuzzHandle<'_> {
     fn drop(&mut self) {
         BUZZ_SIG.signal(BuzzCmd::Off);
+    }
+}
+
+impl BuzzHandle<'_> {
+    pub fn on(&mut self) {
+        BUZZ_SIG.signal(BuzzCmd::On);
+    }
+
+    pub fn off(&mut self) {
+        BUZZ_SIG.signal(BuzzCmd::On);
+    }
+
+    pub fn pattern(&mut self, pat: [u8; 7]) {
+        BUZZ_SIG.signal(BuzzCmd::Pattern(pat));
     }
 }
 
@@ -45,6 +60,25 @@ async fn buzz_task(pin: crate::hardware::vibrate::EN) {
         match cmd {
             BuzzCmd::On => pin.set_high(),
             BuzzCmd::Off => pin.set_low(),
+            BuzzCmd::Pattern(pat) => {
+                pin.set_high();
+                for ms in pat {
+                    if ms == 0 {
+                        break;
+                    }
+                    match embassy_futures::select::select(
+                        BUZZ_SIG.wait(),
+                        Timer::after_millis(ms.into()),
+                    )
+                    .await
+                    {
+                        embassy_futures::select::Either::First(_) => break,
+                        embassy_futures::select::Either::Second(_) => {}
+                    }
+                    pin.toggle();
+                }
+                pin.set_low();
+            }
         }
     }
 }

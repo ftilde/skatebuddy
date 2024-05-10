@@ -47,7 +47,7 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
     ctx.backlight.active().await;
 
-    let mut ticker = Ticker::every(Duration::from_secs(1));
+    let mut ticker = Ticker::every(Duration::from_millis(1500));
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
@@ -58,7 +58,8 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
     let s = Size::new(150, 100);
 
     let mut dismiss_btn = crate::ui::Button::lazy(&button_style, s, "Dismiss");
-    let _buzz = ctx.buzzer.on();
+
+    let mut buzzer = ctx.buzzer.on();
 
     ctx.lcd.on().await;
 
@@ -66,6 +67,7 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
     ctx.lcd.fill(bg);
 
     loop {
+        buzzer.pattern([100, 200, 100, 200, 100, 0, 0]);
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
         let message = textbox(msg, Size::new(100, 50), bg, sl);
 
