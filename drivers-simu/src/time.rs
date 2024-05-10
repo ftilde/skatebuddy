@@ -18,6 +18,9 @@ pub fn num_sync_fails() -> u32 {
 pub fn last_drift_s() -> i32 {
     0
 }
+pub fn force_sync() {
+    println!("Forced time sync");
+}
 
 pub fn next_sync() -> Instant {
     Instant::now()

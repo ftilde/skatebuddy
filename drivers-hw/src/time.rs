@@ -13,6 +13,24 @@ use util::ClockScale;
 const DRIFT_THRESHOLD_LONGER: i32 = 5;
 const DRIFT_THRESHOLD_SHORTER: i32 = 10;
 
+enum ClockSyncCmd {
+    SyncNow,
+}
+static CLOCK_SYNC_SIG: embassy_sync::signal::Signal<
+    embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex,
+    ClockSyncCmd,
+> = embassy_sync::signal::Signal::new();
+
+async fn sync_delay(delay: Duration) {
+    match embassy_futures::select::select(CLOCK_SYNC_SIG.wait(), Timer::after(delay)).await {
+        embassy_futures::select::Either::First(cmd) => {
+            let ClockSyncCmd::SyncNow = cmd;
+            CLOCK_SYNC_SIG.reset();
+        }
+        embassy_futures::select::Either::Second(_) => {}
+    }
+}
+
 #[embassy_executor::task]
 pub(crate) async fn clock_sync_task(mut gps: gps::GPSRessources) {
     const INITIAL_SYNC_TIME: Duration = Duration::from_secs(2 * 60);
@@ -22,7 +40,7 @@ pub(crate) async fn clock_sync_task(mut gps: gps::GPSRessources) {
 
     let mut sync_time = INITIAL_SYNC_TIME;
 
-    Timer::after(Duration::from_secs(1 * 60)).await;
+    sync_delay(Duration::from_secs(1 * 60)).await;
     loop {
         let before_sync = Instant::now();
         let res = {
@@ -57,8 +75,11 @@ pub(crate) async fn clock_sync_task(mut gps: gps::GPSRessources) {
             Ordering::Release,
         );
 
-        Timer::after(next_sync).await;
+        sync_delay(next_sync).await;
     }
+}
+pub fn force_sync() {
+    CLOCK_SYNC_SIG.signal(ClockSyncCmd::SyncNow);
 }
 
 async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()> {
