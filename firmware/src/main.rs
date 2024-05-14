@@ -202,12 +202,8 @@ async fn clock(ctx: &mut Context) {
         .await
         {
             select::Either3::First(_) => {}
-            select::Either3::Second(d) => {
-                if d > Duration::from_secs(1) {
-                    ctx.battery.reset().await;
-                } else {
-                    break;
-                }
+            select::Either3::Second(_d) => {
+                break;
             }
             select::Either3::Third(_event) => {}
         }
