@@ -1,9 +1,19 @@
+use arrform::*;
 use core::fmt::Write;
-use drivers::futures::select;
 use drivers::lpm013m1126c::Rgb111;
-use embedded_graphics::mono_font::MonoTextStyle;
+use drivers::time::Duration;
+use drivers::{futures::select, time::Instant};
+use embedded_graphics::{
+    geometry::{Point, Size},
+    mono_font::MonoTextStyle,
+};
+use littlefs2::path::PathBuf;
 
-use crate::{render_top_bar, ui::TextWriter, Context};
+use crate::{
+    render_top_bar,
+    ui::{ButtonStyle, TextWriter},
+    Context,
+};
 
 pub async fn hrm(ctx: &mut Context) {
     //let font = bitmap_font::tamzen::FONT_16x32_BOLD;
@@ -15,10 +25,38 @@ pub async fn hrm(ctx: &mut Context) {
     let mut hrm = ctx.hrm.on(&mut ctx.twi1).await;
     hrm.enable().await;
 
+    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+
+    let button_style = ButtonStyle {
+        fill: Rgb111::blue(),
+        highlight: Rgb111::white(),
+        font,
+    };
+
+    let mut record_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
+        position: Point::new(120, 120),
+        size: Size::new(50, 50),
+        style: &button_style,
+        text: "Record",
+    });
+
+    enum State {
+        Idle,
+        Recording { since: Instant, path: PathBuf },
+    }
+
+    let mut state = State::Idle;
+
     ctx.lcd.on().await;
     loop {
-        match select::select(hrm.wait_event(), ctx.button.wait_for_press()).await {
-            select::Either::First((r, s)) => {
+        match select::select3(
+            hrm.wait_event(),
+            ctx.button.wait_for_press(),
+            touch.wait_for_action(),
+        )
+        .await
+        {
+            select::Either3::First((r, s)) => {
                 ctx.lcd.fill(Rgb111::black());
                 render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
@@ -34,12 +72,64 @@ pub async fn hrm(ctx: &mut Context) {
 
                 if let Some(sample) = s {
                     let _ = writeln!(w, "s: {:?}", sample);
+
+                    if let State::Recording { since, path } = &state {
+                        ctx.flash
+                            .with_fs(|fs| {
+                                fs.open_file_with_options_and_then(
+                                    |o| o.write(true).create(true).append(true),
+                                    &path,
+                                    |file| {
+                                        use littlefs2::io::Write;
+                                        let content = arrform!(
+                                            40,
+                                            "{};{}\n",
+                                            since.elapsed().as_millis(),
+                                            sample
+                                        );
+                                        file.write_all(content.as_bytes())
+                                    },
+                                )
+                            })
+                            .await
+                            .unwrap();
+                        if since.elapsed() > Duration::from_secs(10) {
+                            state = State::Idle;
+                        }
+                    }
+                }
+
+                if matches!(state, State::Idle) {
+                    record_button.render(&mut *ctx.lcd).unwrap();
                 }
 
                 ctx.lcd.present().await;
             }
-            select::Either::Second(_d) => {
+            select::Either3::Second(_d) => {
                 break;
+            }
+            select::Either3::Third(e) => {
+                if record_button.clicked(&e) {
+                    let path = ctx
+                        .flash
+                        .with_fs(|fs| {
+                            fs.create_dir_all(b"/hrm/\0".try_into().unwrap())?;
+                            for i in 0.. {
+                                let path =
+                                    PathBuf::from(arrform!(40, "/hrm/samples{}.bin", i).as_str());
+                                if fs.metadata(&path) == Err(littlefs2::io::Error::NoSuchEntry) {
+                                    return Ok(path);
+                                }
+                            }
+                            panic!("Too many recordings");
+                        })
+                        .await
+                        .unwrap();
+                    state = State::Recording {
+                        since: Instant::now(),
+                        path,
+                    }
+                }
             }
         }
     }
