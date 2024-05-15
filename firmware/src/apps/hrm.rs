@@ -42,7 +42,12 @@ pub async fn hrm(ctx: &mut Context) {
 
     enum State {
         Idle,
-        Recording { since: Instant, path: PathBuf },
+        Recording {
+            since: Instant,
+            path: PathBuf,
+            samples: [(u16, u16); 200],
+            sample: usize,
+        },
     }
 
     let mut state = State::Idle;
@@ -62,38 +67,49 @@ pub async fn hrm(ctx: &mut Context) {
 
                 let mut w =
                     TextWriter::new(&mut ctx.lcd, sl).y(20 + font.character_size.height as i32);
-                let _ = writeln!(w, "status: {}", r.status);
-                let _ = writeln!(w, "irq_status: {}", r.irq_status);
-                let _ = writeln!(w, "env: {:?}", r.env_value);
-                let _ = writeln!(w, "pre: {:?}", r.pre_value);
-                let _ = writeln!(w, "ps: {}", r.ps_value);
-                let _ = writeln!(w, "pd: {:?}", r.pd_res_value);
-                let _ = writeln!(w, "cur: {:?}", r.current_value);
+                if let State::Idle = state {
+                    let _ = writeln!(w, "status: {}", r.status);
+                    let _ = writeln!(w, "irq_status: {}", r.irq_status);
+                    let _ = writeln!(w, "env: {:?}", r.env_value);
+                    let _ = writeln!(w, "pre: {:?}", r.pre_value);
+                    let _ = writeln!(w, "ps: {}", r.ps_value);
+                    let _ = writeln!(w, "pd: {:?}", r.pd_res_value);
+                    let _ = writeln!(w, "cur: {:?}", r.current_value);
+                }
 
-                if let Some(sample) = s {
-                    let _ = writeln!(w, "s: {:?}", sample);
+                if let Some(sample_val) = s {
+                    let _ = writeln!(w, "s: {:?}", sample_val);
 
-                    if let State::Recording { since, path } = &state {
-                        ctx.flash
-                            .with_fs(|fs| {
-                                fs.open_file_with_options_and_then(
-                                    |o| o.write(true).create(true).append(true),
-                                    &path,
-                                    |file| {
-                                        use littlefs2::io::Write;
-                                        let content = arrform!(
-                                            40,
-                                            "{};{}\n",
-                                            since.elapsed().as_millis(),
-                                            sample
-                                        );
-                                        file.write_all(content.as_bytes())
-                                    },
-                                )
-                            })
-                            .await
-                            .unwrap();
-                        if since.elapsed() > Duration::from_secs(10) {
+                    if let State::Recording {
+                        since,
+                        path,
+                        sample,
+                        samples,
+                    } = &mut state
+                    {
+                        let ts = since.elapsed().as_millis();
+                        samples[*sample] = (ts as u16, sample_val);
+                        *sample += 1;
+                        if since.elapsed() > Duration::from_secs(10) || *sample == samples.len() {
+                            ctx.flash
+                                .with_fs(|fs| {
+                                    fs.open_file_with_options_and_then(
+                                        |o| o.write(true).create(true).append(true),
+                                        &path,
+                                        |file| {
+                                            use littlefs2::io::Write;
+                                            for i in 0..*sample {
+                                                let (ts, sample_val) = samples[i];
+                                                let content =
+                                                    arrform!(40, "{};{}\n", ts, sample_val);
+                                                file.write_all(content.as_bytes())?;
+                                            }
+                                            Ok(())
+                                        },
+                                    )
+                                })
+                                .await
+                                .unwrap();
                             state = State::Idle;
                         }
                     }
@@ -128,6 +144,8 @@ pub async fn hrm(ctx: &mut Context) {
                     state = State::Recording {
                         since: Instant::now(),
                         path,
+                        samples: [(0, 0); 200],
+                        sample: 0,
                     }
                 }
             }
