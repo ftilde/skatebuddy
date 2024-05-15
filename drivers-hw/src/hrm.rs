@@ -43,6 +43,7 @@ impl HrmRessources {
             slots: 0,
             hrm_led_config: LedConfig::from_reg(0),
             hrm_led_max_current: 0x6f,
+            adjust_mode: AdjustMode::Stable,
         };
 
         let mut hrm = Hrm {
@@ -85,6 +86,7 @@ struct HrmState {
     slots: u8,
     hrm_led_config: LedConfig,
     hrm_led_max_current: u8,
+    adjust_mode: AdjustMode,
 }
 
 pub struct Hrm<'a> {
@@ -142,6 +144,12 @@ impl Default for RegConfig {
             _idk2: [0x16, 0x56, 0x16, 0x00],
         }
     }
+}
+
+enum AdjustMode {
+    Increasing,
+    Decreasing,
+    Stable,
 }
 
 impl<'a> Hrm<'a> {
@@ -227,20 +235,52 @@ impl<'a> Hrm<'a> {
 
             let threshold = 10 * 32;
             let max_current = self.state.hrm_led_max_current;
-            if sample > 4096 - threshold {
-                // Oversaturation
-                self.update_hrm_led(|l| {
-                    l.current = max_current.min(l.current + 1);
-                    defmt::println!("adjusting current up: {}", l.current);
-                })
-                .await;
-            } else if sample < threshold {
-                // Undersaturation (? this seems the wrong way around...)
-                self.update_hrm_led(|l| {
-                    l.current = l.current.saturating_sub(1);
-                    defmt::println!("adjusting current down: {}", l.current);
-                })
-                .await;
+            let max_val = 4095;
+            self.state.adjust_mode = match self.state.adjust_mode {
+                AdjustMode::Increasing => {
+                    if sample < max_val / 2 {
+                        // Reached center
+                        AdjustMode::Stable
+                    } else {
+                        AdjustMode::Increasing
+                    }
+                }
+                AdjustMode::Decreasing => {
+                    if sample > max_val / 2 {
+                        // Reached center
+                        AdjustMode::Stable
+                    } else {
+                        AdjustMode::Decreasing
+                    }
+                }
+                AdjustMode::Stable => {
+                    if sample > max_val - threshold {
+                        // Oversaturation
+                        AdjustMode::Increasing
+                    } else if sample < threshold {
+                        // Undersaturation (? this seems the wrong way around...)
+                        AdjustMode::Decreasing
+                    } else {
+                        AdjustMode::Stable
+                    }
+                }
+            };
+            match self.state.adjust_mode {
+                AdjustMode::Increasing => {
+                    self.update_hrm_led(|l| {
+                        l.current = max_current.min(l.current + 1);
+                        defmt::println!("adjusting current up: {}", l.current);
+                    })
+                    .await;
+                }
+                AdjustMode::Decreasing => {
+                    self.update_hrm_led(|l| {
+                        l.current = l.current.saturating_sub(1);
+                        defmt::println!("adjusting current down: {}", l.current);
+                    })
+                    .await;
+                }
+                AdjustMode::Stable => {}
             }
 
             // now we need to adjust the PPG
