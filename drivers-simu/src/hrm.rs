@@ -1,6 +1,6 @@
 pub struct HrmRessources;
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 pub use drivers_shared::hrm::*;
 
@@ -10,14 +10,14 @@ impl HrmRessources {
     pub async fn on<'a>(&'a mut self, _i2c: &'a mut I2CInstance) -> Hrm<'a> {
         Hrm {
             _res: self,
-            start: Instant::now(),
+            elapsed_millis: 0,
         }
     }
 }
 
 pub struct Hrm<'a> {
     _res: &'a HrmRessources,
-    start: Instant,
+    elapsed_millis: u64,
 }
 
 impl<'a> Hrm<'a> {
@@ -30,13 +30,20 @@ impl<'a> Hrm<'a> {
     pub async fn disable(&mut self) {
         println!("Hrm disable");
     }
-    pub async fn wait_event(&mut self) -> (ReadResult, Option<u16>) {
-        smol::Timer::after(Duration::from_millis(100)).await;
-        let ms = self.start.elapsed().as_millis() as f32;
-        let beats_per_ms = 2.1 / 1000.0;
-        let beat = ms * beats_per_ms;
-        let norm_val = (beat * std::f32::consts::TAU).sin();
-        let val = ((norm_val * 0.1 + 1.0) * 1024.0) as u16;
+    pub async fn wait_event(&mut self) -> (ReadResult, Option<Vec<u16>>) {
+        let num_samples = 8;
+        let delay_per_sample_ms = 40;
+        smol::Timer::after(Duration::from_millis(delay_per_sample_ms * 8)).await;
+        let mut vals = Vec::new();
+        for _ in 0..num_samples {
+            let ms = self.elapsed_millis as f32;
+            self.elapsed_millis += delay_per_sample_ms;
+            let beats_per_ms = 2.1 / 1000.0;
+            let beat = ms * beats_per_ms;
+            let norm_val = (beat * std::f32::consts::TAU).sin();
+            let val = ((norm_val * 0.1 + 1.0) * 1024.0) as u16;
+            vals.push(val);
+        }
         (
             ReadResult {
                 status: 0,
@@ -47,7 +54,7 @@ impl<'a> Hrm<'a> {
                 pd_res_value: [0; 3],
                 current_value: [0; 3],
             },
-            Some(val),
+            Some(vals),
         )
     }
 }

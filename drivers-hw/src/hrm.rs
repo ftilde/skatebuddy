@@ -1,5 +1,6 @@
 use super::hardware::hrm as hw;
 
+use arrayvec::ArrayVec;
 pub use drivers_shared::hrm::*;
 
 use embassy_nrf::{
@@ -44,6 +45,7 @@ impl HrmRessources {
             hrm_led_config: LedConfig::from_reg(0),
             hrm_led_max_current: 0x6f,
             adjust_mode: AdjustMode::Stable,
+            fifo_read_index: FIFO_RANGE_BEGIN as u8,
         };
 
         let mut hrm = Hrm {
@@ -87,6 +89,7 @@ struct HrmState {
     hrm_led_config: LedConfig,
     hrm_led_max_current: u8,
     adjust_mode: AdjustMode,
+    fifo_read_index: u8,
 }
 
 pub struct Hrm<'a> {
@@ -98,7 +101,7 @@ pub struct Hrm<'a> {
 }
 
 const STATUS_START_REG: u8 = 0x01;
-//const FIFO_WRITE_ADDR_REG: u8 = 0x03;
+const FIFO_WRITE_ADDR_REG: u8 = 0x03;
 const SLOT0_LED_CURRENT_REG: u8 = 0x17;
 
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -132,7 +135,7 @@ impl Default for RegConfig {
             slots: 0x01,
             irqs: INT_LED_OVERLOAD | INT_FIFO | INT_ENV | INT_PS,
             _idk: 0x8A,
-            fifo_int_len: 0x40,
+            fifo_int_len: 0x40 | (FIFO_INT_LEN - 1) as u8,
             counter_prescaler: [0x03, 0x1F],
             slot2_env_sample_rate: 0x00,
             slot0_led_current: 0x00,
@@ -152,6 +155,40 @@ enum AdjustMode {
     Stable,
 }
 
+const FIFO_INT_LEN: usize = 0x08;
+const MAX_SAMPLES_PER_READ: usize = 2 * FIFO_INT_LEN;
+const FIFO_RANGE_BEGIN: usize = 0x80;
+const FIFO_RANGE_END: usize = 0x100;
+
+async fn read_fifo(
+    i2c: &mut twim::Twim<'_, I2CInstance>,
+    start: usize,
+    end: usize,
+    out: &mut [u16],
+) -> usize {
+    let addr_diff = (end - start) as usize;
+    assert_eq!(addr_diff % 2, 0);
+    let samples_available = addr_diff / 2;
+    let len = out.len().min(samples_available);
+    defmt::println!(
+        "start {}, end {}, out.len {}, len {}",
+        start,
+        end,
+        out.len(),
+        len
+    );
+    if len != 0 {
+        let byte_buf: &mut [u8] = bytemuck::cast_slice_mut(&mut out[..len]);
+        i2c.write_read(hw::ADDR, &[start.try_into().unwrap()], byte_buf)
+            .await
+            .unwrap();
+        for val in out {
+            *val = u16::from_be(*val);
+        }
+    }
+    len
+}
+
 impl<'a> Hrm<'a> {
     pub async fn model_number(&mut self) -> u8 {
         let reg = 0;
@@ -163,7 +200,9 @@ impl<'a> Hrm<'a> {
         res
     }
 
-    pub async fn wait_event(&mut self) -> (ReadResult, Option<u16>) {
+    pub async fn wait_event(
+        &mut self,
+    ) -> (ReadResult, Option<ArrayVec<u16, MAX_SAMPLES_PER_READ>>) {
         self.irq.wait_for_high().await;
 
         let mut buf1 = [0u8; 6];
@@ -221,24 +260,76 @@ impl<'a> Hrm<'a> {
 
         // Read sample
         let sample = if (read_result.irq_status & INT_FIFO) != 0 {
-            //let mut fifo_write_index;
-            //self.i2c.write_read(hw::ADDR, &[FIFO_WRITE_ADDR_REG], core::slice::from_mut(&mut fifo_write_index)).await;
-
-            let fifo_read_index = 0x80;
-            let mut data = [0; 2];
+            let mut fifo_write_index = 0u8;
             self.i2c
-                .write_read(hw::ADDR, &[fifo_read_index], &mut data)
+                .write_read(
+                    hw::ADDR,
+                    &[FIFO_WRITE_ADDR_REG],
+                    core::slice::from_mut(&mut fifo_write_index),
+                )
                 .await
                 .unwrap();
 
-            let sample = u16::from_be_bytes(data);
+            let mut fifo_read_index = self.state.fifo_read_index as usize;
+            let fifo_write_index = fifo_write_index as usize;
 
+            let mut samples = [2048u16; MAX_SAMPLES_PER_READ];
+            let mut samples_collected;
+
+            if fifo_read_index <= fifo_write_index {
+                // Contiguous region in fifo buffer
+                let num_read = read_fifo(
+                    &mut self.i2c,
+                    fifo_read_index,
+                    fifo_write_index,
+                    &mut samples,
+                )
+                .await;
+                fifo_read_index += num_read * 2;
+                samples_collected = num_read;
+            } else {
+                // Wrapping over end
+                let num_read =
+                    read_fifo(&mut self.i2c, fifo_read_index, FIFO_RANGE_END, &mut samples).await;
+                fifo_read_index += num_read * 2;
+                samples_collected = num_read;
+
+                if fifo_read_index >= FIFO_RANGE_END {
+                    fifo_read_index = FIFO_RANGE_BEGIN;
+                    let num_read = read_fifo(
+                        &mut self.i2c,
+                        fifo_read_index,
+                        fifo_write_index,
+                        &mut samples[num_read..],
+                    )
+                    .await;
+                    fifo_read_index += num_read * 2;
+                    samples_collected += num_read;
+                }
+            }
+
+            self.state.fifo_read_index = fifo_read_index.try_into().unwrap();
+            let mut samples = ArrayVec::from(samples);
+            samples.truncate(samples_collected);
+
+            // Single sample, only if FIFO_LEN = 0;
+            //let fifo_read_index = 0x80;
+            //let mut data = [0; 2];
+            //self.i2c
+            //    .write_read(hw::ADDR, &[fifo_read_index], &mut data)
+            //    .await
+            //    .unwrap();
+
+            //let sample = u16::from_be_bytes(data);
+
+            let max_sample = *samples.iter().max().unwrap();
+            let min_sample = *samples.iter().min().unwrap();
             let threshold = 10 * 32;
             let max_current = self.state.hrm_led_max_current;
             let max_val = 4095;
             self.state.adjust_mode = match self.state.adjust_mode {
                 AdjustMode::Increasing => {
-                    if sample < max_val / 2 {
+                    if max_sample < max_val / 2 {
                         // Reached center
                         AdjustMode::Stable
                     } else {
@@ -246,7 +337,7 @@ impl<'a> Hrm<'a> {
                     }
                 }
                 AdjustMode::Decreasing => {
-                    if sample > max_val / 2 {
+                    if min_sample > max_val / 2 {
                         // Reached center
                         AdjustMode::Stable
                     } else {
@@ -254,10 +345,10 @@ impl<'a> Hrm<'a> {
                     }
                 }
                 AdjustMode::Stable => {
-                    if sample > max_val - threshold {
+                    if max_sample > max_val - threshold {
                         // Oversaturation
                         AdjustMode::Increasing
-                    } else if sample < threshold {
+                    } else if min_sample < threshold {
                         // Undersaturation (? this seems the wrong way around...)
                         AdjustMode::Decreasing
                     } else {
@@ -290,7 +381,8 @@ impl<'a> Hrm<'a> {
             //    vc31b_slot_adjust(slotNum);
             //  }
             //}
-            Some(sample)
+            defmt::println!("Samples: {:?}", samples.as_slice());
+            Some(samples)
         } else {
             None
         };

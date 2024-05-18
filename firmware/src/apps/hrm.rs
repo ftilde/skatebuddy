@@ -45,7 +45,7 @@ pub async fn hrm(ctx: &mut Context) {
         Recording {
             since: Instant,
             path: PathBuf,
-            samples: [(u16, u16); 200],
+            samples: [u16; 500],
             sample: usize,
         },
     }
@@ -77,8 +77,8 @@ pub async fn hrm(ctx: &mut Context) {
                     let _ = writeln!(w, "cur: {:?}", r.current_value);
                 }
 
-                if let Some(sample_val) = s {
-                    let _ = writeln!(w, "s: {:?}", sample_val);
+                if let Some(sample_vals) = s {
+                    let _ = writeln!(w, "s: {:?}", sample_vals);
 
                     if let State::Recording {
                         since,
@@ -87,9 +87,13 @@ pub async fn hrm(ctx: &mut Context) {
                         samples,
                     } = &mut state
                     {
-                        let ts = since.elapsed().as_millis();
-                        samples[*sample] = (ts as u16, sample_val);
-                        *sample += 1;
+                        for val in sample_vals {
+                            if *sample == samples.len() {
+                                break;
+                            }
+                            samples[*sample] = val;
+                            *sample += 1;
+                        }
                         if since.elapsed() > Duration::from_secs(10) || *sample == samples.len() {
                             ctx.flash
                                 .with_fs(|fs| {
@@ -99,9 +103,8 @@ pub async fn hrm(ctx: &mut Context) {
                                         |file| {
                                             use littlefs2::io::Write;
                                             for i in 0..*sample {
-                                                let (ts, sample_val) = samples[i];
-                                                let content =
-                                                    arrform!(40, "{};{}\n", ts, sample_val);
+                                                let sample_val = samples[i];
+                                                let content = arrform!(40, "{}\n", sample_val);
                                                 file.write_all(content.as_bytes())?;
                                             }
                                             Ok(())
@@ -144,7 +147,7 @@ pub async fn hrm(ctx: &mut Context) {
                     state = State::Recording {
                         since: Instant::now(),
                         path,
-                        samples: [(0, 0); 200],
+                        samples: [0; 500],
                         sample: 0,
                     }
                 }
