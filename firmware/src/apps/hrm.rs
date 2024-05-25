@@ -15,6 +15,22 @@ use crate::{
     Context,
 };
 
+struct DrawState {
+    samples: [u16; 176],
+    filtered: [f32; 176],
+    next: usize,
+}
+
+impl Default for DrawState {
+    fn default() -> Self {
+        DrawState {
+            samples: [0; 176],
+            filtered: [0.0; 176],
+            next: 0,
+        }
+    }
+}
+
 pub async fn hrm(ctx: &mut Context) {
     //let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     //let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
@@ -34,7 +50,7 @@ pub async fn hrm(ctx: &mut Context) {
     };
 
     let mut record_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
-        position: Point::new(120, 120),
+        position: Point::new(126, 0),
         size: Size::new(50, 50),
         style: &button_style,
         text: "Record",
@@ -52,6 +68,14 @@ pub async fn hrm(ctx: &mut Context) {
 
     let mut state = State::Idle;
 
+    let mut draw_state = DrawState::default();
+    let mut last_current = 0u8;
+    let mut last_res = 0u8;
+    let fc = 10.0; //Hz
+    let dt = 0.04; //s
+    let rc = 1.0 / (core::f32::consts::TAU * fc);
+    let alpha = rc / (rc + dt);
+
     ctx.lcd.on().await;
     loop {
         match select::select3(
@@ -65,20 +89,40 @@ pub async fn hrm(ctx: &mut Context) {
                 ctx.lcd.fill(Rgb111::black());
                 render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
-                let mut w =
-                    TextWriter::new(&mut ctx.lcd, sl).y(20 + font.character_size.height as i32);
-                if let State::Idle = state {
-                    let _ = writeln!(w, "status: {}", r.status);
-                    let _ = writeln!(w, "irq_status: {}", r.irq_status);
-                    let _ = writeln!(w, "env: {:?}", r.env_value);
-                    let _ = writeln!(w, "pre: {:?}", r.pre_value);
-                    let _ = writeln!(w, "ps: {}", r.ps_value);
-                    let _ = writeln!(w, "pd: {:?}", r.pd_res_value);
-                    let _ = writeln!(w, "cur: {:?}", r.current_value);
+                if r.current_value[0] != last_current || r.pd_res_value[0] != last_res {
+                    last_current = r.current_value[0];
+                    last_res = r.pd_res_value[0];
+                    draw_state = Default::default();
                 }
 
                 if let Some(sample_vals) = s {
-                    let _ = writeln!(w, "s: {:?}", sample_vals);
+                    //let _ = writeln!(w, "s: {:?}", sample_vals);
+
+                    for sample in &sample_vals {
+                        let current = draw_state.next;
+                        let prev = current.wrapping_sub(1).min(draw_state.samples.len() - 1);
+                        draw_state.samples[current] = *sample;
+
+                        let sample_diff =
+                            draw_state.samples[current] as f32 - draw_state.samples[prev] as f32;
+                        draw_state.filtered[current] =
+                            alpha * (draw_state.filtered[prev] + sample_diff);
+
+                        draw_state.next = (draw_state.next + 1) % draw_state.samples.len();
+                    }
+
+                    let min = *draw_state.samples.iter().min().unwrap();
+                    let max = *draw_state.samples.iter().max().unwrap();
+                    let range = (max - min) as f32;
+
+                    for (x, sample) in draw_state.samples.iter().enumerate() {
+                        let norm = (sample - min) as f32 / range;
+                        let y = 176 - (norm * 50.0) as i32;
+                        let x = x as i32;
+                        for y in y..176 {
+                            ctx.lcd.set(y, x, Rgb111::red());
+                        }
+                    }
 
                     if let State::Recording {
                         since,
@@ -116,6 +160,17 @@ pub async fn hrm(ctx: &mut Context) {
                             state = State::Idle;
                         }
                     }
+                }
+                let mut w =
+                    TextWriter::new(&mut ctx.lcd, sl).y(20 + font.character_size.height as i32);
+                if let State::Idle = state {
+                    let _ = writeln!(w, "status: {}", r.status);
+                    let _ = writeln!(w, "irq_status: {}", r.irq_status);
+                    let _ = writeln!(w, "env: {:?}", r.env_value);
+                    let _ = writeln!(w, "pre: {:?}", r.pre_value);
+                    let _ = writeln!(w, "ps: {}", r.ps_value);
+                    let _ = writeln!(w, "pd: {:?}", r.pd_res_value);
+                    let _ = writeln!(w, "cur: {:?}", r.current_value);
                 }
 
                 if matches!(state, State::Idle) {
