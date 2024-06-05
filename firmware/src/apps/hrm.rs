@@ -34,7 +34,7 @@ impl Default for DrawState {
 pub async fn hrm(ctx: &mut Context) {
     //let font = bitmap_font::tamzen::FONT_16x32_BOLD;
     //let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
-    let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
+    let font = &embedded_graphics::mono_font::ascii::FONT_8X13;
     //let sl = TextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
     let sl = MonoTextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
 
@@ -50,10 +50,22 @@ pub async fn hrm(ctx: &mut Context) {
     };
 
     let mut record_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
-        position: Point::new(126, 0),
+        position: Point::new(0, 126),
         size: Size::new(50, 50),
         style: &button_style,
         text: "Record",
+    });
+    let mut plus_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
+        position: Point::new(50, 126),
+        size: Size::new(50, 50),
+        style: &button_style,
+        text: "+",
+    });
+    let mut minus_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
+        position: Point::new(100, 126),
+        size: Size::new(50, 50),
+        style: &button_style,
+        text: "-",
     });
 
     enum State {
@@ -111,17 +123,26 @@ pub async fn hrm(ctx: &mut Context) {
                         draw_state.next = (draw_state.next + 1) % draw_state.samples.len();
                     }
 
+                    //let min = *draw_state
+                    //    .filtered
+                    //    .iter()
+                    //    .min_by(|l, r| l.total_cmp(r))
+                    //    .unwrap();
+                    //let max = *draw_state
+                    //    .filtered
+                    //    .iter()
+                    //    .max_by(|l, r| l.total_cmp(r))
+                    //    .unwrap();
                     let min = *draw_state.samples.iter().min().unwrap();
                     let max = *draw_state.samples.iter().max().unwrap();
                     let range = (max - min) as f32;
 
-                    for (x, sample) in draw_state.samples.iter().enumerate() {
+                    for (y, sample) in draw_state.samples.iter().enumerate() {
                         let norm = (sample - min) as f32 / range;
-                        let y = 176 - (norm * 50.0) as i32;
-                        let x = x as i32;
-                        for y in y..176 {
-                            ctx.lcd.set(y, x, Rgb111::red());
-                        }
+                        let end = 176;
+                        let x = end - (norm * 50.0) as i32;
+                        let y = y as i32;
+                        ctx.lcd.set_line(y, x, end, Rgb111::red());
                     }
 
                     if let State::Recording {
@@ -162,8 +183,13 @@ pub async fn hrm(ctx: &mut Context) {
                     }
                 }
                 let mut w =
-                    TextWriter::new(&mut ctx.lcd, sl).y(20 + font.character_size.height as i32);
+                    TextWriter::new(&mut ctx.lcd, sl).y(10 + font.character_size.height as i32);
                 if let State::Idle = state {
+                    let min = *draw_state.samples.iter().min().unwrap();
+                    let max = *draw_state.samples.iter().max().unwrap();
+
+                    let _ = writeln!(w, "range: [{}, {}]", min, max);
+
                     let _ = writeln!(w, "status: {}", r.status);
                     let _ = writeln!(w, "irq_status: {}", r.irq_status);
                     let _ = writeln!(w, "env: {:?}", r.env_value);
@@ -176,6 +202,8 @@ pub async fn hrm(ctx: &mut Context) {
                 if matches!(state, State::Idle) {
                     record_button.render(&mut *ctx.lcd).unwrap();
                 }
+                plus_button.render(&mut *ctx.lcd).unwrap();
+                minus_button.render(&mut *ctx.lcd).unwrap();
 
                 ctx.lcd.present().await;
             }
@@ -183,6 +211,7 @@ pub async fn hrm(ctx: &mut Context) {
                 break;
             }
             select::Either3::Third(e) => {
+                ctx.backlight.active().await;
                 if record_button.clicked(&e) {
                     let path = ctx
                         .flash
@@ -205,6 +234,18 @@ pub async fn hrm(ctx: &mut Context) {
                         samples: [0; 500],
                         sample: 0,
                     }
+                }
+                if plus_button.clicked(&e) {
+                    hrm.update_hrm_res(|c| {
+                        c.res = (c.res + 1).min(7);
+                    })
+                    .await;
+                }
+                if minus_button.clicked(&e) {
+                    hrm.update_hrm_res(|c| {
+                        c.res = c.res.saturating_sub(1);
+                    })
+                    .await;
                 }
             }
         }

@@ -11,6 +11,7 @@ impl HrmRessources {
         Hrm {
             _res: self,
             elapsed_millis: 0,
+            hrm_res_config: PdResConfig::from_reg(0x57),
         }
     }
 }
@@ -18,6 +19,7 @@ impl HrmRessources {
 pub struct Hrm<'a> {
     _res: &'a HrmRessources,
     elapsed_millis: u64,
+    hrm_res_config: PdResConfig,
 }
 
 impl<'a> Hrm<'a> {
@@ -51,10 +53,13 @@ impl<'a> Hrm<'a> {
                 env_value: [0; 3],
                 pre_value: [0; 2],
                 ps_value: 0,
-                pd_res_value: [0; 3],
+                pd_res_value: [self.hrm_res_config.res, 0, 0],
                 current_value: [0; 3],
             },
             Some(vals),
         )
+    }
+    pub async fn update_hrm_res(&mut self, f: impl FnOnce(&mut PdResConfig)) {
+        f(&mut self.hrm_res_config);
     }
 }

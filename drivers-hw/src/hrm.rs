@@ -39,13 +39,15 @@ impl HrmRessources {
         let mut i2c_conf = twim::Config::default();
         i2c_conf.frequency = embassy_nrf::twim::Frequency::K400;
 
+        let reg_config = RegConfig::default();
         let state = HrmState {
             wearing: false,
             slots: 0,
-            hrm_led_config: LedConfig::from_reg(0),
+            hrm_led_config: LedConfig::from_reg(reg_config.slot0_led_current),
             hrm_led_max_current: 0x6f,
             adjust_mode: AdjustMode::Stable,
             fifo_read_index: FIFO_RANGE_BEGIN as u8,
+            hrm_res_config: PdResConfig::from_reg(reg_config.slot0_env_sensitivity),
         };
 
         let mut hrm = Hrm {
@@ -87,6 +89,7 @@ struct HrmState {
     wearing: bool,
     slots: u8,
     hrm_led_config: LedConfig,
+    hrm_res_config: PdResConfig,
     hrm_led_max_current: u8,
     adjust_mode: AdjustMode,
     fifo_read_index: u8,
@@ -129,6 +132,7 @@ const INT_ENV: u8 = 0x02;
 
 const REG_CONFIG_START_ADDR: u8 = 0x10;
 const LED_SLOT0_REG: u8 = 0x17;
+const PD_RES_SLOT0_REG: u8 = 0x1A;
 impl Default for RegConfig {
     fn default() -> Self {
         Self {
@@ -405,6 +409,17 @@ impl<'a> Hrm<'a> {
             .write(
                 hw::ADDR,
                 &[LED_SLOT0_REG, self.state.hrm_led_config.to_reg()],
+            )
+            .await
+            .unwrap();
+    }
+
+    pub async fn update_hrm_res(&mut self, f: impl FnOnce(&mut PdResConfig)) {
+        f(&mut self.state.hrm_res_config);
+        self.i2c
+            .write(
+                hw::ADDR,
+                &[PD_RES_SLOT0_REG, self.state.hrm_res_config.to_reg()],
             )
             .await
             .unwrap();
