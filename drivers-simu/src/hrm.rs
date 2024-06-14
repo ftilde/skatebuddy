@@ -42,7 +42,7 @@ impl<'a> Hrm<'a> {
             self.elapsed_millis += delay_per_sample_ms;
             let beats_per_ms = 2.1 / 1000.0;
             let beat = ms * beats_per_ms;
-            let norm_val = (beat * std::f32::consts::TAU).sin();
+            let norm_val = (beat * std::f32::consts::TAU).sin() * 0.2 + (beat * 0.1).sin() * 3.0;
             let val = ((norm_val * 0.1 + 1.0) * 1024.0) as u16;
             vals.push(val);
         }
