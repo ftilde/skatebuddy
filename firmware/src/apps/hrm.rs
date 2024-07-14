@@ -20,7 +20,6 @@ use crate::{
 struct DrawState {
     filtered: RingBuffer<176, f32>,
     bpm_detector: HeartbeatDetector,
-    last_bpm: Option<BPM>,
 }
 
 impl Default for DrawState {
@@ -28,7 +27,6 @@ impl Default for DrawState {
         DrawState {
             filtered: Default::default(),
             bpm_detector: Default::default(),
-            last_bpm: None,
         }
     }
 }
@@ -42,6 +40,8 @@ pub async fn hrm(ctx: &mut Context) {
 
     let mut hrm = ctx.hrm.on(&mut ctx.twi1).await;
     hrm.enable().await;
+
+    let mut last_bpm = None;
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
@@ -111,7 +111,7 @@ pub async fn hrm(ctx: &mut Context) {
                     for sample in &sample_vals {
                         let (filtered, bpm) = draw_state.bpm_detector.add_sample(*sample);
                         if let Some(bpm) = bpm {
-                            draw_state.last_bpm = Some(bpm);
+                            last_bpm = Some(bpm);
                         }
 
                         draw_state.filtered.add(filtered);
@@ -206,7 +206,7 @@ pub async fn hrm(ctx: &mut Context) {
                         .unwrap();
 
                     let _ = writeln!(w, "range: [{}, {}]", min, max);
-                    if let Some(bpm) = draw_state.last_bpm.as_ref() {
+                    if let Some(bpm) = last_bpm.as_ref() {
                         let _ = writeln!(w, "bpm: {}", bpm.0);
                     } else {
                         let _ = writeln!(w, "bpm: ??");
