@@ -1,4 +1,4 @@
-use crate::heartbeat::{HeartbeatDetector, BPM};
+use crate::heartbeat::HeartbeatDetector;
 use crate::util::RingBuffer;
 use arrform::*;
 use core::fmt::Write;
