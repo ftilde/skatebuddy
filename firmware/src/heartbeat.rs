@@ -53,8 +53,8 @@ pub struct HeartbeatDetector {
     region: BeatRegion,
     sample_count: usize,
     last_beat_sample: usize,
-    min_since_cross: f32,
-    min_sample: usize,
+    max_since_cross: f32,
+    max_sample: usize,
     start: Instant,
 }
 
@@ -66,8 +66,8 @@ impl Default for HeartbeatDetector {
             region: BeatRegion::Below,
             sample_count: 0,
             last_beat_sample: 0,
-            min_since_cross: f32::MAX,
-            min_sample: 0,
+            max_since_cross: f32::MIN,
+            max_sample: 0,
             start: Instant::now(),
         }
     }
@@ -83,27 +83,27 @@ impl HeartbeatDetector {
         let filtered = self.filter_state.filter(s);
         self.sample_count += 1;
         let bpm = if self.sample_count > 0 {
-            if filtered < self.min_since_cross {
-                self.min_since_cross = filtered;
-                self.min_sample = self.sample_count;
+            if filtered > self.max_since_cross {
+                self.max_since_cross = filtered;
+                self.max_sample = self.sample_count;
             }
 
             match (self.region, filtered > 0.0) {
-                (BeatRegion::Above, false) => {
-                    self.region = BeatRegion::Below;
+                (BeatRegion::Below, true) => {
+                    self.region = BeatRegion::Above;
                     None
                 }
-                (BeatRegion::Below, true) => {
-                    let samples_since_last_beat = self.min_sample - self.last_beat_sample;
-                    self.last_beat_sample = self.min_sample;
-                    self.min_since_cross = f32::MAX;
+                (BeatRegion::Above, false) => {
+                    let samples_since_last_beat = self.max_sample - self.last_beat_sample;
+                    self.last_beat_sample = self.max_sample;
+                    self.max_since_cross = f32::MIN;
 
                     let beat_duration_millis =
                         samples_since_last_beat as f32 * self.millis_per_sample();
                     let bpm = ((60.0 * 1000.0) / beat_duration_millis) as u16;
                     let bpm = self.outlier_filter.filter(bpm);
 
-                    self.region = BeatRegion::Above;
+                    self.region = BeatRegion::Below;
                     Some(BPM(bpm))
                 }
                 _ => None,
