@@ -16,16 +16,11 @@ use crate::{
     Context,
 };
 
-#[derive(Copy, Clone)]
-enum BeatRegion {
-    Above,
-    Below,
-}
-
 struct DrawState {
     filtered: [f32; 176],
     next_sample_pos: usize,
     bpm_detector: HeartbeatDetector,
+    start: Instant,
     last_bpm: Option<BPM>,
 }
 
@@ -34,6 +29,7 @@ impl Default for DrawState {
         DrawState {
             filtered: [0.0; 176],
             next_sample_pos: 0,
+            start: Instant::now(),
             bpm_detector: Default::default(),
             last_bpm: None,
         }
@@ -145,12 +141,21 @@ pub async fn hrm(ctx: &mut Context) {
                     //let max = *draw_state.samples.iter().max().unwrap();
                     let range = (max - min) as f32;
 
-                    for (y, sample) in draw_state.filtered.iter().enumerate() {
+                    let end = 176;
+                    let sample_to_pixel = |sample| {
                         let norm = (sample - min) as f32 / range;
-                        let end = 176;
-                        let x = end - (norm * 50.0) as i32;
+                        end - (norm * 50.0) as i32
+                    };
+                    let pixel_0 = sample_to_pixel(0.0);
+                    for (y, sample) in draw_state.filtered.iter().enumerate() {
+                        let x = sample_to_pixel(*sample);
                         let y = y as i32;
-                        ctx.lcd.set_line(y, x, end, Rgb111::red());
+                        if x < pixel_0 {
+                            let end = pixel_0.min(end);
+                            ctx.lcd.set_line(y, x, end, Rgb111::red());
+                        }
+                        ctx.lcd
+                            .set_line(y, pixel_0.clamp(x, end), end, Rgb111::yellow());
                     }
 
                     if let State::Recording {
@@ -212,6 +217,10 @@ pub async fn hrm(ctx: &mut Context) {
                     } else {
                         let _ = writeln!(w, "bpm: ??");
                     }
+
+                    let s_time = draw_state.start.elapsed().as_millis() as f32
+                        / draw_state.bpm_detector.num_samples() as f32;
+                    let _ = writeln!(w, "s_time: {}", s_time);
 
                     let _ = writeln!(w, "status: {}", r.status);
                     let _ = writeln!(w, "irq_status: {}", r.irq_status);
