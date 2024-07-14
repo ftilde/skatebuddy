@@ -1927,6 +1927,7 @@ dependencies = [
  "arrayvec",
  "arrform",
  "base64",
+ "biquad",
  "bitmap-font",
  "bytemuck",
  "chrono",
@@ -1938,7 +1939,6 @@ dependencies = [
  "embedded-text",
  "littlefs2",
  "micromath",
- "util",
 ]
 
 [[package]]
@@ -2102,7 +2102,6 @@ checksum = "1f6cc3adc849b5292b4075fc0d5fdcf2f24866e88e336dd27a8943090a520508"
 name = "util"
 version = "0.1.0"
 dependencies = [
- "biquad",
  "chrono",
 ]
 

@@ -1,3 +1,5 @@
+use drivers::time::Instant;
+
 pub struct HrmFilter {
     inner: biquad::DirectForm2Transposed<f32>,
 }
@@ -35,6 +37,7 @@ pub struct HeartbeatDetector {
     last_beat_sample: usize,
     min_since_cross: f32,
     min_sample: usize,
+    start: Instant,
 }
 
 impl Default for HeartbeatDetector {
@@ -46,6 +49,7 @@ impl Default for HeartbeatDetector {
             last_beat_sample: 0,
             min_since_cross: f32::MAX,
             min_sample: 0,
+            start: Instant::now(),
         }
     }
 }
@@ -53,13 +57,13 @@ impl Default for HeartbeatDetector {
 pub struct BPM(pub u16);
 
 impl HeartbeatDetector {
-    pub fn num_samples(&self) -> usize {
-        self.sample_count
+    pub fn millis_per_sample(&self) -> f32 {
+        self.start.elapsed().as_millis() as f32 / (self.sample_count - 1) as f32
     }
     pub fn add_sample(&mut self, s: u16) -> (f32, Option<BPM>) {
         let filtered = self.filter_state.filter(s);
         self.sample_count += 1;
-        let bpm = if self.sample_count >= 0 {
+        let bpm = if self.sample_count > 0 {
             if filtered < self.min_since_cross {
                 self.min_since_cross = filtered;
                 self.min_sample = self.sample_count;
@@ -75,8 +79,9 @@ impl HeartbeatDetector {
                     self.last_beat_sample = self.min_sample;
                     self.min_since_cross = f32::MAX;
 
-                    let beat_duration_millis = samples_since_last_beat * 40 /* 40ms = 1/25Hz */;
-                    let bpm = ((60 * 1000) / beat_duration_millis) as u16;
+                    let beat_duration_millis =
+                        samples_since_last_beat as f32 * self.millis_per_sample();
+                    let bpm = ((60.0 * 1000.0) / beat_duration_millis) as u16;
 
                     self.region = BeatRegion::Above;
                     Some(BPM(bpm))
@@ -84,6 +89,7 @@ impl HeartbeatDetector {
                 _ => None,
             }
         } else {
+            self.start = Instant::now();
             None
         };
 

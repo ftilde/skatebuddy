@@ -1,3 +1,4 @@
+use crate::heartbeat::{HeartbeatDetector, BPM};
 use arrform::*;
 use core::fmt::Write;
 use drivers::lpm013m1126c::Rgb111;
@@ -8,7 +9,6 @@ use embedded_graphics::{
     mono_font::MonoTextStyle,
 };
 use littlefs2::path::PathBuf;
-use util::{HeartbeatDetector, BPM};
 
 use crate::{
     render_top_bar,
@@ -20,7 +20,6 @@ struct DrawState {
     filtered: [f32; 176],
     next_sample_pos: usize,
     bpm_detector: HeartbeatDetector,
-    start: Instant,
     last_bpm: Option<BPM>,
 }
 
@@ -29,7 +28,6 @@ impl Default for DrawState {
         DrawState {
             filtered: [0.0; 176],
             next_sample_pos: 0,
-            start: Instant::now(),
             bpm_detector: Default::default(),
             last_bpm: None,
         }
@@ -218,9 +216,7 @@ pub async fn hrm(ctx: &mut Context) {
                         let _ = writeln!(w, "bpm: ??");
                     }
 
-                    let s_time = draw_state.start.elapsed().as_millis() as f32
-                        / draw_state.bpm_detector.num_samples() as f32;
-                    let _ = writeln!(w, "s_time: {}", s_time);
+                    let _ = writeln!(w, "s_time: {}", draw_state.bpm_detector.millis_per_sample());
 
                     let _ = writeln!(w, "status: {}", r.status);
                     let _ = writeln!(w, "irq_status: {}", r.irq_status);
