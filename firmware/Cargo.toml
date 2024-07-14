@@ -28,6 +28,7 @@ littlefs2 = "0.4.0"
 micromath = "2.1.0"
 
 drivers = { path = "../drivers" }
+util = { path = "../util" }
 arrayvec = { version = "0.7.4", default-features = false }
 base64 = { version = "0.21.7", default-features = false }
 

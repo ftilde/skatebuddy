@@ -1,5 +1,9 @@
 #![cfg_attr(not(test), no_std)]
 
+mod heartbeat;
+
+pub use heartbeat::*;
+
 pub fn resync_time(
     base: chrono::DateTime<chrono::Utc>,
     time: chrono::NaiveTime,
