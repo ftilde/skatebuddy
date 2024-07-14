@@ -86,10 +86,6 @@ pub async fn hrm(ctx: &mut Context) {
     let mut draw_state = DrawState::default();
     let mut last_current = 0u8;
     let mut last_res = 0u8;
-    let fc = 0.5; //Hz
-    let dt = 0.04; //s
-    let rc = 1.0 / (core::f32::consts::TAU * fc);
-    let alpha = rc / (rc + dt);
 
     ctx.lcd.on().await;
     loop {
