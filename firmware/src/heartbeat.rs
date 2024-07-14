@@ -73,6 +73,9 @@ impl Default for HeartbeatDetector {
     }
 }
 
+const MIN_BPM: u16 = 30;
+const MAX_BPM: u16 = 230;
+
 pub struct BPM(pub u16);
 
 impl HeartbeatDetector {
@@ -101,10 +104,15 @@ impl HeartbeatDetector {
                     let beat_duration_millis =
                         samples_since_last_beat as f32 * self.millis_per_sample();
                     let bpm = ((60.0 * 1000.0) / beat_duration_millis) as u16;
-                    let bpm = self.outlier_filter.filter(bpm);
 
-                    self.region = BeatRegion::Below;
-                    Some(BPM(bpm))
+                    if MIN_BPM <= bpm && bpm < MAX_BPM {
+                        let bpm = self.outlier_filter.filter(bpm);
+
+                        self.region = BeatRegion::Below;
+                        Some(BPM(bpm))
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             }
