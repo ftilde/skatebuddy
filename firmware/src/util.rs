@@ -38,7 +38,7 @@ impl<const N: usize, T> RingBuffer<N, T> {
     pub fn num_valid(&self) -> usize {
         self.num_total.min(N)
     }
-    //pub fn values(&self) -> &[T] {
-    //    &self.ring_buffer[..self.num_total.min(N)]
-    //}
+    pub fn valid_values(&self) -> &[T] {
+        &self.ring_buffer[..self.num_total.min(N)]
+    }
 }

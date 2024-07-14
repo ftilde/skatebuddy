@@ -1,4 +1,5 @@
 use crate::heartbeat::{HeartbeatDetector, BPM};
+use crate::util::RingBuffer;
 use arrform::*;
 use core::fmt::Write;
 use drivers::lpm013m1126c::Rgb111;
@@ -17,8 +18,7 @@ use crate::{
 };
 
 struct DrawState {
-    filtered: [f32; 176],
-    next_sample_pos: usize,
+    filtered: RingBuffer<176, f32>,
     bpm_detector: HeartbeatDetector,
     last_bpm: Option<BPM>,
 }
@@ -26,8 +26,7 @@ struct DrawState {
 impl Default for DrawState {
     fn default() -> Self {
         DrawState {
-            filtered: [0.0; 176],
-            next_sample_pos: 0,
+            filtered: Default::default(),
             bpm_detector: Default::default(),
             last_bpm: None,
         }
@@ -115,19 +114,18 @@ pub async fn hrm(ctx: &mut Context) {
                             draw_state.last_bpm = Some(bpm);
                         }
 
-                        let current = draw_state.next_sample_pos;
-                        draw_state.next_sample_pos =
-                            (draw_state.next_sample_pos + 1) % draw_state.filtered.len();
-                        draw_state.filtered[current] = filtered;
+                        draw_state.filtered.add(filtered);
                     }
 
                     let min = *draw_state
                         .filtered
+                        .valid_values()
                         .iter()
                         .min_by(|l, r| l.total_cmp(r))
                         .unwrap();
                     let max = *draw_state
                         .filtered
+                        .valid_values()
                         .iter()
                         .max_by(|l, r| l.total_cmp(r))
                         .unwrap();
@@ -141,7 +139,7 @@ pub async fn hrm(ctx: &mut Context) {
                         end - (norm * 50.0) as i32
                     };
                     let pixel_0 = sample_to_pixel(0.0);
-                    for (y, sample) in draw_state.filtered.iter().enumerate() {
+                    for (y, sample) in draw_state.filtered.valid_values().iter().enumerate() {
                         let x = sample_to_pixel(*sample);
                         let y = y as i32;
                         if x < pixel_0 {
@@ -196,11 +194,13 @@ pub async fn hrm(ctx: &mut Context) {
                     //let max = *draw_state.samples.iter().max().unwrap();
                     let min = *draw_state
                         .filtered
+                        .valid_values()
                         .iter()
                         .min_by(|l, r| l.total_cmp(r))
                         .unwrap();
                     let max = *draw_state
                         .filtered
+                        .valid_values()
                         .iter()
                         .max_by(|l, r| l.total_cmp(r))
                         .unwrap();
