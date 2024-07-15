@@ -40,6 +40,11 @@ impl HrmRessources {
         i2c_conf.frequency = embassy_nrf::twim::Frequency::K400;
 
         let reg_config = RegConfig::default();
+
+        // Make reading start at zero in first batch by "faking" an adjust event. (Although
+        // in a way we ARE adjusting by starting the device...)
+        let adjust_event = Some(AdjustEvent { last_value: 0 });
+
         let state = HrmState {
             wearing: false,
             slots: 0,
@@ -48,6 +53,8 @@ impl HrmRessources {
             adjust_mode: AdjustMode::Stable,
             fifo_read_index: FIFO_RANGE_BEGIN as u8,
             hrm_res_config: PdResConfig::from_reg(reg_config.slot0_env_sensitivity),
+            adjust_event,
+            sample_offset: 0,
         };
 
         let mut hrm = Hrm {
@@ -93,6 +100,8 @@ struct HrmState {
     hrm_led_max_current: u8,
     adjust_mode: AdjustMode,
     fifo_read_index: u8,
+    adjust_event: Option<AdjustEvent>,
+    sample_offset: i16,
 }
 
 pub struct Hrm<'a> {
@@ -159,6 +168,10 @@ enum AdjustMode {
     Stable,
 }
 
+struct AdjustEvent {
+    last_value: i16,
+}
+
 const FIFO_INT_LEN: usize = 0x08;
 const MAX_SAMPLES_PER_READ: usize = 2 * FIFO_INT_LEN;
 const FIFO_RANGE_BEGIN: usize = 0x80;
@@ -168,7 +181,7 @@ async fn read_fifo(
     i2c: &mut twim::Twim<'_, I2CInstance>,
     start: usize,
     end: usize,
-    out: &mut [u16],
+    out: &mut [i16],
 ) -> usize {
     let addr_diff = (end - start) as usize;
     assert_eq!(addr_diff % 2, 0);
@@ -187,7 +200,7 @@ async fn read_fifo(
             .await
             .unwrap();
         for val in out {
-            *val = u16::from_be(*val);
+            *val = i16::from_be(*val);
         }
     }
     len
@@ -206,7 +219,7 @@ impl<'a> Hrm<'a> {
 
     pub async fn wait_event(
         &mut self,
-    ) -> (ReadResult, Option<ArrayVec<u16, MAX_SAMPLES_PER_READ>>) {
+    ) -> (ReadResult, Option<ArrayVec<i16, MAX_SAMPLES_PER_READ>>) {
         self.irq.wait_for_high().await;
 
         let mut buf1 = [0u8; 6];
@@ -277,7 +290,7 @@ impl<'a> Hrm<'a> {
             let mut fifo_read_index = self.state.fifo_read_index as usize;
             let fifo_write_index = fifo_write_index as usize;
 
-            let mut samples = [2048u16; MAX_SAMPLES_PER_READ];
+            let mut samples = [0i16; MAX_SAMPLES_PER_READ];
             let mut samples_collected;
 
             if fifo_read_index <= fifo_write_index {
@@ -316,6 +329,15 @@ impl<'a> Hrm<'a> {
             let mut samples = ArrayVec::from(samples);
             samples.truncate(samples_collected);
 
+            if let Some(first_this_batch) = samples.first() {
+                if let Some(AdjustEvent { last_value }) = self.state.adjust_event {
+                    // Adjust offset so that
+                    // <first sample of this batch> = <last sample of last batch>
+                    self.state.sample_offset = last_value - first_this_batch;
+                    self.state.adjust_event = None;
+                }
+            }
+
             // Single sample, only if FIFO_LEN = 0;
             //let fifo_read_index = 0x80;
             //let mut data = [0; 2];
@@ -326,6 +348,7 @@ impl<'a> Hrm<'a> {
 
             //let sample = u16::from_be_bytes(data);
 
+            // Figure out adjust mode based on raw values
             let max_sample = *samples.iter().max().unwrap();
             let min_sample = *samples.iter().min().unwrap();
             let threshold = 10 * 32;
@@ -360,6 +383,8 @@ impl<'a> Hrm<'a> {
                     }
                 }
             };
+
+            // Act based on adjust mode
             match self.state.adjust_mode {
                 AdjustMode::Increasing => {
                     self.update_hrm_led(|l| {
@@ -376,6 +401,20 @@ impl<'a> Hrm<'a> {
                     .await;
                 }
                 AdjustMode::Stable => {}
+            }
+
+            // Apply offset to raw values to get a smoother transition when adjusting led current.
+            for v in samples.iter_mut() {
+                *v += self.state.sample_offset;
+            }
+            // Slowly decrease offset
+            self.state.sample_offset -= self.state.sample_offset.signum();
+
+            // Register adjusts for next iteration
+            if let AdjustMode::Increasing | AdjustMode::Decreasing = self.state.adjust_mode {
+                self.state.adjust_event = Some(AdjustEvent {
+                    last_value: *samples.last().unwrap(),
+                });
             }
 
             // now we need to adjust the PPG

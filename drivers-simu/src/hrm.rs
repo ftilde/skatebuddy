@@ -32,7 +32,7 @@ impl<'a> Hrm<'a> {
     pub async fn disable(&mut self) {
         println!("Hrm disable");
     }
-    pub async fn wait_event(&mut self) -> (ReadResult, Option<Vec<u16>>) {
+    pub async fn wait_event(&mut self) -> (ReadResult, Option<Vec<i16>>) {
         let num_samples = 8;
         let delay_per_sample_ms = 40;
         smol::Timer::after(Duration::from_millis(delay_per_sample_ms * 8)).await;
@@ -43,7 +43,7 @@ impl<'a> Hrm<'a> {
             let beats_per_ms = 2.1 / 1000.0;
             let beat = ms * beats_per_ms;
             let norm_val = (beat * std::f32::consts::TAU).sin() * 0.2 + (beat * 0.1).sin() * 3.0;
-            let val = ((norm_val * 0.1 + 1.0) * 1024.0) as u16;
+            let val = ((norm_val * 0.1 + 1.0) * 1024.0) as i16;
             vals.push(val);
         }
         (

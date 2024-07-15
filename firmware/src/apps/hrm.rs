@@ -75,7 +75,7 @@ pub async fn hrm(ctx: &mut Context) {
         Recording {
             since: Instant,
             path: PathBuf,
-            samples: [u16; 500],
+            samples: [i16; 500],
             sample: usize,
         },
     }
@@ -83,7 +83,6 @@ pub async fn hrm(ctx: &mut Context) {
     let mut state = State::Idle;
 
     let mut draw_state = DrawState::default();
-    let mut last_current = 0u8;
     let mut last_res = 0u8;
 
     ctx.lcd.on().await;
@@ -99,8 +98,7 @@ pub async fn hrm(ctx: &mut Context) {
                 ctx.lcd.fill(Rgb111::black());
                 render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
-                if r.current_value[0] != last_current || r.pd_res_value[0] != last_res {
-                    last_current = r.current_value[0];
+                if r.pd_res_value[0] != last_res {
                     last_res = r.pd_res_value[0];
                     draw_state = Default::default();
                 }
@@ -190,22 +188,13 @@ pub async fn hrm(ctx: &mut Context) {
                 let mut w =
                     TextWriter::new(&mut ctx.lcd, sl).y(10 + font.character_size.height as i32);
                 if let State::Idle = state {
-                    //let min = *draw_state.samples.iter().min().unwrap();
-                    //let max = *draw_state.samples.iter().max().unwrap();
-                    let min = *draw_state
-                        .filtered
-                        .valid_values()
-                        .iter()
-                        .min_by(|l, r| l.total_cmp(r))
-                        .unwrap();
-                    let max = *draw_state
-                        .filtered
-                        .valid_values()
-                        .iter()
-                        .max_by(|l, r| l.total_cmp(r))
-                        .unwrap();
+                    let valid_vals = draw_state.filtered.valid_values();
+                    if !valid_vals.is_empty() {
+                        let min = *valid_vals.iter().min_by(|l, r| l.total_cmp(r)).unwrap();
+                        let max = *valid_vals.iter().max_by(|l, r| l.total_cmp(r)).unwrap();
 
-                    let _ = writeln!(w, "range: [{}, {}]", min, max);
+                        let _ = writeln!(w, "range: [{}, {}]", min, max);
+                    }
                     if let Some(bpm) = last_bpm.as_ref() {
                         let _ = writeln!(w, "bpm: {}", bpm.0);
                     } else {

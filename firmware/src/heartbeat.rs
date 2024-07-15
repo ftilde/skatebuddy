@@ -20,7 +20,7 @@ impl HrmFilter {
         }
     }
 
-    pub fn filter(&mut self, val: u16) -> f32 {
+    pub fn filter(&mut self, val: i16) -> f32 {
         use biquad::*;
         self.inner.run(val as f32)
     }
@@ -82,7 +82,7 @@ impl HeartbeatDetector {
     pub fn millis_per_sample(&self) -> f32 {
         self.start.elapsed().as_millis() as f32 / (self.sample_count - 1) as f32
     }
-    pub fn add_sample(&mut self, s: u16) -> (f32, Option<BPM>) {
+    pub fn add_sample(&mut self, s: i16) -> (f32, Option<BPM>) {
         let filtered = self.filter_state.filter(s);
         self.sample_count += 1;
         let bpm = if self.sample_count > 0 {
