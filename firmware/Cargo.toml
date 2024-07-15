@@ -26,7 +26,7 @@ bytemuck = { version="1.14.0", features=["derive"] }
 chrono = { version = "0.4.31", default-features = false }
 littlefs2 = "0.4.0"
 micromath = "2.1.0"
-biquad = "0.4.2"
+#biquad = "0.4.2"
 
 drivers = { path = "../drivers" }
 arrayvec = { version = "0.7.4", default-features = false }
