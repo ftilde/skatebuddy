@@ -105,10 +105,10 @@ impl HeartbeatDetector {
                         samples_since_last_beat as f32 * self.millis_per_sample();
                     let bpm = ((60.0 * 1000.0) / beat_duration_millis) as u16;
 
+                    self.region = BeatRegion::Below;
                     if MIN_BPM <= bpm && bpm < MAX_BPM {
                         let bpm = self.outlier_filter.filter(bpm);
 
-                        self.region = BeatRegion::Below;
                         Some(BPM(bpm))
                     } else {
                         None
