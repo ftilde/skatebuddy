@@ -201,12 +201,12 @@ pub async fn hrm(ctx: &mut Context) {
                     let _ = writeln!(w, "s_time: {}", draw_state.bpm_detector.millis_per_sample());
 
                     let _ = writeln!(w, "status: {}", r.status);
-                    let _ = writeln!(w, "irq_status: {}", r.irq_status);
                     let _ = writeln!(w, "env: {:?}", r.env_value);
-                    let _ = writeln!(w, "pre: {:?}", r.pre_value);
                     let _ = writeln!(w, "ps: {}", r.ps_value);
                     let _ = writeln!(w, "pd: {:?}", r.pd_res_value);
                     let _ = writeln!(w, "cur: {:?}", r.current_value);
+                    let _ = writeln!(w, "pre: {:?}", r.pre_value);
+                    let _ = writeln!(w, "irq_status: {}", r.irq_status);
                 }
 
                 if matches!(state, State::Idle) {
