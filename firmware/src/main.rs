@@ -233,6 +233,7 @@ async fn system_menu(ctx: &mut Context) {
     #[derive(Copy, Clone)]
     enum App {
         Reset,
+        PanicMsg,
         Panic,
         FormatFlash,
         Files,
@@ -240,6 +241,7 @@ async fn system_menu(ctx: &mut Context) {
 
     let options = [
         ("Files", App::Files),
+        ("Panic Msg", App::PanicMsg),
         ("Reset", App::Reset),
         ("Panic", App::Panic),
         ("Fmt Flash", App::FormatFlash),
@@ -261,6 +263,7 @@ async fn system_menu(ctx: &mut Context) {
             match app {
                 App::Files => apps::files::files(ctx).await,
                 App::Reset => reset(ctx).await,
+                App::PanicMsg => apps::panic_msg::panic_msg(ctx).await,
                 App::Panic => panic!("as you choose"),
                 App::FormatFlash => format_flash(ctx).await,
             }

@@ -8,98 +8,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument('filename', nargs="+")
 args = parser.parse_args()
 
-filter_vals = np.array([
-  6,
-  7,
-  8,
-  5,
-  -2,
-  -9,
-  -14,
-  -14,
-  -10,
-  -4,
-  0,
-  1,
-  0,
-  -1,
-  0,
-  3,
-  5,
-  6,
-  5,
-  4,
-  5,
-  8,
-  10,
-  9,
-  5,
-  0,
-  -1,
-  2,
-  6,
-  6,
-  0,
-  -11,
-  -20,
-  -21,
-  -13,
-  -3,
-  -3,
-  -18,
-  -42,
-  -59,
-  -51,
-  -12,
-  46,
-  98,
-  119,
-  98,
-  46,
-  -12,
-  -51,
-  -59,
-  -42,
-  -18,
-  -3,
-  -3,
-  -13,
-  -21,
-  -20,
-  -11,
-  0,
-  6,
-  6,
-  2,
-  -1,
-  0,
-  5,
-  9,
-  10,
-  8,
-  5,
-  4,
-  5,
-  6,
-  5,
-  3,
-  0,
-  -1,
-  0,
-  1,
-  0,
-  -4,
-  -10,
-  -14,
-  -14,
-  -9,
-  -2,
-  5,
-  8,
-  7,
-  6
-])
-
 #/*
 #
 #FIR filter designed with
@@ -211,7 +119,7 @@ for file in args.filename:
     sample_rate = len(v)/(time[-1]/1000)
     #sos = scipy.signal.butter(5, 0.5, 'highpass', fs=sample_rate, output='sos')
     #filtered_data = scipy.signal.sosfiltfilt(sos, v)
-    filtered_data = np.convolve(v, filter_vals, 'same')
+    filtered_data = np.convolve(v, filter_vals, 'valid')
 
     running_mean = 100.0
     alpha = 0.99
@@ -219,6 +127,14 @@ for file in args.filename:
 #        running_mean = filtered_data[i] * (1-alpha) + alpha * running_mean
 #        filtered_data -= running_mean
 #
-    plt.plot(time, filtered_data)
+    plt.plot(time[:len(filtered_data)], filtered_data)
+    plt.show()
 
-plt.show()
+    T = 1.0/40.0/60
+    N = len(filtered_data)
+    spectrum = scipy.fft.fft(filtered_data);
+    xf = scipy.fft.fftfreq(N, T)[:N//2]
+
+    plt.plot(xf, 2.0/N * np.abs(spectrum[0:N//2]))
+    plt.show()
+

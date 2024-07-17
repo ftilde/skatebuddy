@@ -1,6 +1,5 @@
 use embassy_time::{Duration, Timer};
-use embedded_hal::digital::v2::PinState;
-use nrf52840_hal::prelude::OutputPin;
+use embedded_hal::digital::v2::{OutputPin, PinState};
 
 pub struct SpiDeviceWrapper<'a, T: embassy_nrf::spim::Instance, CS> {
     pub spi: embassy_nrf::spim::Spim<'a, T>,

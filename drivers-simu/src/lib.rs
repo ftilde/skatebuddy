@@ -64,6 +64,7 @@ pub struct Context {
     pub buzzer: buzz::Buzzer,
     pub twi0: TWI0,
     pub twi1: TWI1,
+    pub last_panic_msg: Option<&'static str>,
 }
 
 pub fn sys_reset() -> ! {
@@ -105,6 +106,7 @@ pub fn run(main: impl Main) -> ! {
         hrm: hrm::HrmRessources,
         twi0: TWI0,
         twi1: TWI1,
+        last_panic_msg: None,
     };
     let _ = smol::block_on(executor.run(main.build(context)));
     panic!("Main should never return");

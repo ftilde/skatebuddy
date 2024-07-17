@@ -10,8 +10,9 @@ use embassy_time::Instant;
 use static_cell::StaticCell;
 
 use defmt_rtt as _; //logger
-use nrf52840_hal as _; // memory layout
-use panic_probe as _; //panic handler
+
+use panic_persist as _;
+//use panic_probe as _; //panic handler //panic handler
 
 pub mod accel;
 pub mod battery;
@@ -28,6 +29,14 @@ pub mod time;
 pub mod touch;
 
 mod util;
+
+#[panic_handler]
+fn panic(info: &core::panic::PanicInfo) -> ! {
+    panic_persist::report_panic_info(info);
+    defmt::error!("{}", defmt::Display2Format(info));
+
+    sys_reset();
+}
 
 pub mod futures {
     pub use embassy_futures::*;
@@ -80,6 +89,7 @@ pub struct Context {
     pub buzzer: buzz::Buzzer,
     pub twi0: TWI0,
     pub twi1: TWI1,
+    pub last_panic_msg: Option<&'static str>,
 }
 
 async fn init(spawner: embassy_executor::Spawner) -> Context {
@@ -157,6 +167,7 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
         buzzer,
         twi0: p.TWISPI0,
         twi1: p.TWISPI1,
+        last_panic_msg: panic_persist::get_panic_message_utf8(),
     }
 }
 
