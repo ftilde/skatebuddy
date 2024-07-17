@@ -152,44 +152,40 @@ pub async fn hrm(ctx: &mut Context) {
                     }
                 }
 
-                let min = *draw_state
-                    .filtered
-                    .valid_values()
-                    .iter()
-                    .min_by(|l, r| l.total_cmp(r))
-                    .unwrap();
-                let max = *draw_state
-                    .filtered
-                    .valid_values()
-                    .iter()
-                    .max_by(|l, r| l.total_cmp(r))
-                    .unwrap();
-                //let min = *draw_state.samples.iter().min().unwrap();
-                //let max = *draw_state.samples.iter().max().unwrap();
-                let range = (max - min) as f32;
+                let valid_values = draw_state.filtered.valid_values();
+                let min = valid_values.iter().min_by(|l, r| l.total_cmp(r));
+                let max = valid_values.iter().max_by(|l, r| l.total_cmp(r));
+                if valid_values.len() > 0 {
+                    let min = *min.unwrap();
+                    let max = *max.unwrap();
+                    let range = (max - min) as f32;
 
-                let end = 176;
-                let sample_to_pixel = |sample| {
-                    let norm = (sample - min) as f32 / range;
-                    end - (norm * 50.0) as i32
-                };
-                let pixel_0 = sample_to_pixel(0.0);
-                for (y, sample) in draw_state.filtered.valid_values().iter().enumerate() {
-                    let x = sample_to_pixel(*sample);
-                    let y = y as i32;
-                    if x < pixel_0 {
-                        let end = pixel_0.min(end);
-                        ctx.lcd.set_line(y, x, end, Rgb111::red());
+                    let end = 176;
+                    let sample_to_pixel = |sample| {
+                        let norm = (sample - min) as f32 / range;
+                        end - (norm * 50.0) as i32
+                    };
+                    let pixel_0 = sample_to_pixel(0.0);
+                    for (y, sample) in draw_state.filtered.valid_values().iter().enumerate() {
+                        let x = sample_to_pixel(*sample);
+                        let y = y as i32;
+                        if x < pixel_0 {
+                            let end = pixel_0.min(end);
+                            ctx.lcd.set_line(y, x, end, Rgb111::red());
+                        }
+                        ctx.lcd
+                            .set_line(y, pixel_0.clamp(x, end), end, Rgb111::yellow());
                     }
-                    ctx.lcd
-                        .set_line(y, pixel_0.clamp(x, end), end, Rgb111::yellow());
                 }
 
                 let mut w =
                     TextWriter::new(&mut ctx.lcd, sl).y(10 + font.character_size.height as i32);
+
                 if let State::Idle = state {
                     let valid_vals = draw_state.filtered.valid_values();
                     if !valid_vals.is_empty() {
+                        let min = *min.unwrap();
+                        let max = *max.unwrap();
                         let _ = writeln!(w, "range: [{}, {}]", min, max);
                     }
                     if let Some(bpm) = last_bpm.as_ref() {
