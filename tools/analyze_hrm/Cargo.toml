@@ -1,0 +1,15 @@
+[package]
+name = "analyze_hrm"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+biquad = "0.4.2"
+csv = "1.3.0"
+goertzel-nostd = "0.3.0"
+goertzel_algorithm = "0.1.0"
+microfft = "0.6.0"
+plotpy = "1.0.0"
+realfft = "3.3.0"
+serde = { version = "1.0.204", features = ["derive"] }
+hrm = { path = "../../hrm" }

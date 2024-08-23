@@ -1,5 +1,4 @@
 use crate::heartbeat::HeartbeatDetector;
-use crate::util::RingBuffer;
 use arrform::*;
 use core::fmt::Write;
 use drivers::lpm013m1126c::Rgb111;
@@ -10,6 +9,7 @@ use embedded_graphics::{
     mono_font::MonoTextStyle,
 };
 use littlefs2::path::PathBuf;
+use util::RingBuffer;
 
 use crate::{
     render_top_bar,
@@ -75,7 +75,7 @@ pub async fn hrm(ctx: &mut Context) {
         Recording {
             since: Instant,
             path: PathBuf,
-            samples: [i16; 500],
+            samples: [i16; 5000],
             sample: usize,
         },
     }
@@ -128,7 +128,7 @@ pub async fn hrm(ctx: &mut Context) {
                             samples[*sample] = val;
                             *sample += 1;
                         }
-                        if since.elapsed() > Duration::from_secs(10) || *sample == samples.len() {
+                        if since.elapsed() > Duration::from_secs(1000) || *sample == samples.len() {
                             ctx.flash
                                 .with_fs(|fs| {
                                     fs.open_file_with_options_and_then(
@@ -237,7 +237,7 @@ pub async fn hrm(ctx: &mut Context) {
                     state = State::Recording {
                         since: Instant::now(),
                         path,
-                        samples: [0; 500],
+                        samples: [0; 5000],
                         sample: 0,
                     }
                 }

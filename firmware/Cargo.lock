@@ -1874,6 +1874,7 @@ dependencies = [
  "embedded-text",
  "littlefs2",
  "micromath",
+ "util",
 ]
 
 [[package]]
