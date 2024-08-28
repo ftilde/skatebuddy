@@ -53,6 +53,8 @@ impl HrmRessources {
             adjust_mode: AdjustMode::Stable,
             fifo_read_index: FIFO_RANGE_BEGIN as u8,
             hrm_res_config: PdResConfig::from_reg(reg_config.slot0_env_sensitivity),
+            lo2_res_config: PdResConfig::from_reg(reg_config.slot1_env_sensitivity),
+            env_res_config: PdResConfig::from_reg(reg_config.slot2_env_sensitivity),
             adjust_event,
             sample_offset: 0,
         };
@@ -97,6 +99,8 @@ struct HrmState {
     slots: u8,
     hrm_led_config: LedConfig,
     hrm_res_config: PdResConfig,
+    lo2_res_config: PdResConfig,
+    env_res_config: PdResConfig,
     hrm_led_max_current: u8,
     adjust_mode: AdjustMode,
     fifo_read_index: u8,
@@ -130,7 +134,7 @@ struct RegConfig {
     slot2_led_current: u8,     // slot2: i think env? but what do we need an led for in that case??
     slot0_env_sensitivity: u8, // these appear to be related to pd_res_value
     slot1_env_sensitivity: u8, // ...
-    mode_or_something: u8,
+    slot2_env_sensitivity: u8,
     _idk2: [u8; 4],
 }
 const INT_PS: u8 = 0x10;
@@ -138,10 +142,14 @@ const INT_LED_OVERLOAD: u8 = 0x08;
 const INT_FIFO: u8 = 0x04;
 const INT_ENV: u8 = 0x02;
 //const INT_PPG: u8 = 0x01;
+//
+const OVERLOAD_MASK: u8 = 0b111;
 
 const REG_CONFIG_START_ADDR: u8 = 0x10;
 const LED_SLOT0_REG: u8 = 0x17;
 const PD_RES_SLOT0_REG: u8 = 0x1A;
+const PD_RES_SLOT1_REG: u8 = 0x1B;
+const PD_RES_SLOT2_REG: u8 = 0x1C;
 impl Default for RegConfig {
     fn default() -> Self {
         Self {
@@ -152,11 +160,11 @@ impl Default for RegConfig {
             counter_prescaler: [0x03, 0x1F],
             slot2_env_sample_rate: 0x00,
             slot0_led_current: 0x00,
-            slot1_led_current: 0x80,
+            slot1_led_current: 0x00,
             slot2_led_current: 0x00,
-            slot0_env_sensitivity: 0x57,
+            slot0_env_sensitivity: 0x37,
             slot1_env_sensitivity: 0x37,
-            mode_or_something: 0x07,
+            slot2_env_sensitivity: 0x77,
             _idk2: [0x16, 0x56, 0x16, 0x00],
         }
     }
@@ -205,6 +213,8 @@ async fn read_fifo(
     }
     len
 }
+
+type Sample = i16;
 
 impl<'a> Hrm<'a> {
     pub async fn model_number(&mut self) -> u8 {
@@ -270,9 +280,20 @@ impl<'a> Hrm<'a> {
         }
 
         if (read_result.irq_status & INT_LED_OVERLOAD) != 0 {
-            self.state.hrm_led_max_current -= 1;
-            let max_current = self.state.hrm_led_max_current;
-            self.update_hrm_led(|l| l.current = max_current).await;
+            let overload = read_result.status & OVERLOAD_MASK;
+            if (overload & 0b001) != 0 {
+                defmt::println!("Overload slot 0!");
+                self.state.hrm_led_max_current -= 1;
+                let max_current = self.state.hrm_led_max_current;
+                self.update_hrm_led(|l| l.current = l.current.min(max_current))
+                    .await;
+            }
+            if (overload & 0b010) != 0 {
+                defmt::println!("Overload slot 1!");
+            }
+            if (overload & 0b100) != 0 {
+                defmt::println!("Overload slot 2!");
+            }
         }
 
         // Read sample
@@ -302,13 +323,13 @@ impl<'a> Hrm<'a> {
                     &mut samples,
                 )
                 .await;
-                fifo_read_index += num_read * 2;
+                fifo_read_index += num_read * core::mem::size_of::<Sample>();
                 samples_collected = num_read;
             } else {
                 // Wrapping over end
                 let num_read =
                     read_fifo(&mut self.i2c, fifo_read_index, FIFO_RANGE_END, &mut samples).await;
-                fifo_read_index += num_read * 2;
+                fifo_read_index += num_read * core::mem::size_of::<Sample>();
                 samples_collected = num_read;
 
                 if fifo_read_index >= FIFO_RANGE_END {
@@ -320,7 +341,7 @@ impl<'a> Hrm<'a> {
                         &mut samples[num_read..],
                     )
                     .await;
-                    fifo_read_index += num_read * 2;
+                    fifo_read_index += num_read * core::mem::size_of::<Sample>();
                     samples_collected += num_read;
                 }
             }
@@ -464,6 +485,28 @@ impl<'a> Hrm<'a> {
             .unwrap();
     }
 
+    pub async fn update_lo2_res(&mut self, f: impl FnOnce(&mut PdResConfig)) {
+        f(&mut self.state.lo2_res_config);
+        self.i2c
+            .write(
+                hw::ADDR,
+                &[PD_RES_SLOT1_REG, self.state.lo2_res_config.to_reg()],
+            )
+            .await
+            .unwrap();
+    }
+
+    pub async fn update_env_res(&mut self, f: impl FnOnce(&mut PdResConfig)) {
+        f(&mut self.state.env_res_config);
+        self.i2c
+            .write(
+                hw::ADDR,
+                &[PD_RES_SLOT2_REG, self.state.env_res_config.to_reg()],
+            )
+            .await
+            .unwrap();
+    }
+
     pub async fn enable(&mut self) {
         let mut cfg = RegConfig::default();
 
@@ -473,7 +516,7 @@ impl<'a> Hrm<'a> {
         cfg.slot2_env_sample_rate = vc_hr02_sample_rate - 6; // VC31B_REG16 how often should ENV fire
 
         cfg.slot2_led_current = 0xE0; //CUR = 80mA//write Hs equal to 1 (SLOT2?)
-        cfg.mode_or_something = 0x67;
+        cfg.slot2_env_sensitivity = 0x67;
         cfg.slots = 0x45; // VC31B_REG11 heart rate calculation - SLOT2(env) and SLOT0(hr)
 
         // Set up HRM speed - from testing, 200=100hz/10ms, 400=50hz/20ms, 800=25hz/40ms
