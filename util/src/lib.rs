@@ -77,10 +77,13 @@ impl<const N: usize, T: Default> Default for RingBuffer<N, T> {
     }
 }
 impl<const N: usize, T> RingBuffer<N, T> {
-    pub fn add(&mut self, v: T) {
+    pub fn add(&mut self, mut v: T) -> T {
         self.num_total += 1;
-        self.ring_buffer[self.next] = v;
+
+        core::mem::swap(&mut self.ring_buffer[self.next], &mut v);
         self.next = (self.next + 1) % N;
+
+        v
     }
     pub fn inner(&self) -> &[T; N] {
         &self.ring_buffer

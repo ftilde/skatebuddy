@@ -69,6 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             .unwrap();
     let mut filter = DirectForm2Transposed::<f32>::new(coefficients);
 
+    let mut gradient_clip = hrm::GradientClip::default();
     let mut ms = 0;
     let mut vals = Vec::new();
     let mut raw_vals = Vec::new();
@@ -76,9 +77,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     //let sample_rate = 1000 / sample_delay;
     for result in rdr.records() {
         let record = result?;
-        let row: Row = record.deserialize(None)?;
-        vals.push((ms as f32, filter.run(row.val as f32)));
-        raw_vals.push((ms as f32, row.val));
+        let mut row: Row = record.deserialize(None)?;
+
+        let val = gradient_clip.add_value(row.val);
+        //let val = row.val;
+        vals.push((ms as f32, filter.run(val as f32)));
+        raw_vals.push((ms as f32, val));
         ms += sample_delay;
     }
 
@@ -141,16 +145,27 @@ fn main() -> Result<(), Box<dyn Error>> {
             bpm_vals.push((*i, bpm.0 as f32));
         }
     }
-    for (i, v) in vals.iter() {
+    let mut window = std::collections::VecDeque::new();
+    let mut prev = 0.0;
+    for (j, ((i, v), (ir, vr))) in vals.iter().zip(raw_vals.iter()).enumerate() {
+        //window.push_back((*ir, (*vr as f32 - prev).abs()));
+        window.push_back((*i, *vr as f32));
+        prev = *vr as f32;
+        if window.len() == 512 {
+            window.pop_front();
+        }
         if let Some(spectrum_orig) = freq_detector.add_sample(*v as _) {
             let spectrum = spec_smoother.add(spectrum_orig);
 
             let bpm = hrm::max_bpm(spectrum_orig);
             let bpm_smooth = hrm::max_bpm(spectrum);
 
-            let spectrum = hrm::spectrum_freqs(spectrum);
-            let spectrum_orig = hrm::spectrum_freqs(spectrum_orig);
-            plot_values_multiple(&[&spectrum_orig, &spectrum])?;
+            let spectrum = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum));
+            let spectrum_orig = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum_orig));
+            if j % 512 == 0 {
+                //plot_values_multiple(&[&spectrum_orig, &spectrum])?;
+                //plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
+            }
 
             bpm_vals_freq.push((*i, bpm.0 as f32));
             bpm_vals_freq_smooth.push((*i, bpm_smooth.0 as f32));

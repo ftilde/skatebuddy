@@ -1,5 +1,6 @@
 #![no_std]
 
+use micromath::F32Ext;
 use util::RingBuffer;
 
 /*
@@ -103,38 +104,114 @@ impl HrmFilter {
 //}
 //
 
-const SAMPLE_DELAY_MS: usize = 40;
-
-pub struct FFTEstimator {
-    samples: [f32; NUM_FFT_SAMPLES],
-    next_sample_pos: u16,
+pub struct ExpMean {
+    acc: f32,
+    alpha: f32,
 }
-impl Default for FFTEstimator {
+impl ExpMean {
+    pub fn new(alpha: f32) -> Self {
+        Self { acc: 0.0, alpha }
+    }
+    pub fn add(&mut self, v: f32) -> f32 {
+        let res = self.acc * self.alpha + v * (1.0 - self.alpha);
+        self.acc = res;
+        res
+    }
+    pub fn get(&self) -> f32 {
+        self.acc
+    }
+}
+
+//const GRADIENT_CLIP_MIN_VALUES: usize = 128;
+const GRADIENT_CLIP_CLIP_MULT: i16 = 3;
+pub struct GradientClip {
+    //ring_buffer: RingBuffer<GRADIENT_CLIP_MIN_VALUES, i16>,
+    //sum: i32,
+    mean: ExpMean,
+    prev_in: i16,
+    prev_out: i16,
+}
+
+impl Default for GradientClip {
     fn default() -> Self {
         Self {
-            samples: core::array::from_fn(|_| 0.0),
-            next_sample_pos: 0,
+            mean: ExpMean::new(0.99),
+            prev_in: 0,
+            prev_out: 0,
         }
     }
 }
 
-const NUM_FFT_SAMPLES: usize = 128;
-const BASE_FREQ_INDEX: usize = bpm_to_index(45);
-const SPECTRUM_SIZE: usize = bpm_to_index(230) - BASE_FREQ_INDEX;
-const fn bpm_to_index(bpm: usize) -> usize {
+impl GradientClip {
+    pub fn add_value(&mut self, v: i16) -> i16 {
+        //let mean = (self.sum / GRADIENT_CLIP_MIN_VALUES as i32).max(1) as i16;
+        let mean = self.mean.get() as i16;
+        let diff = self.prev_in - v;
+        self.prev_in = v;
+        let diff_abs_orig = diff.abs();
+
+        //let old = self.ring_buffer.add(diff_abs_orig);
+        //self.sum -= old as i32;
+        //self.sum += diff_abs_orig as i32;
+        self.mean.add(diff_abs_orig as f32);
+
+        let abs_max = mean * GRADIENT_CLIP_CLIP_MULT;
+        let diff_abs = diff_abs_orig.min(abs_max);
+        let diff = diff.signum() * diff_abs;
+
+        let out = self.prev_out - diff;
+        self.prev_out = out;
+        out
+    }
+}
+
+const SAMPLE_DELAY_MS: usize = 40;
+
+pub struct FFTEstimator {
+    samples: RingBuffer<NUM_FFT_SAMPLES, f32>,
+}
+impl Default for FFTEstimator {
+    fn default() -> Self {
+        Self {
+            samples: Default::default(),
+        }
+    }
+}
+
+const NUM_FFT_SAMPLES: usize = 256;
+const BASE_FREQ_INDEX: usize = bpm_to_fft_index(45);
+const SPECTRUM_SIZE: usize = bpm_to_fft_index(230) - BASE_FREQ_INDEX;
+const fn bpm_to_fft_index(bpm: usize) -> usize {
     (bpm * NUM_FFT_SAMPLES * SAMPLE_DELAY_MS) / (60 * 1000)
 }
+//fn bpm_to_index(bpm: f32) -> usize {
+//    ((bpm * NUM_FFT_SAMPLES as f32 * SAMPLE_DELAY_MS as f32) / (60.0 * 1000.0)).round() as usize
+//}
 const fn index_to_bpm(index: usize) -> f32 {
-    (index * 60 * 1000 / (NUM_FFT_SAMPLES * SAMPLE_DELAY_MS)) as f32
+    ((index + BASE_FREQ_INDEX) * 60 * 1000 / (NUM_FFT_SAMPLES * SAMPLE_DELAY_MS)) as f32
 }
 pub type Spectrum = [f32; SPECTRUM_SIZE];
 
 pub fn spectrum_freqs(s: Spectrum) -> [(f32, f32); SPECTRUM_SIZE] {
-    core::array::from_fn(|i| (index_to_bpm(i + BASE_FREQ_INDEX), s[i]))
+    core::array::from_fn(|i| (index_to_bpm(i), s[i]))
 }
-pub fn normalize_spectrum(s: Spectrum) -> Spectrum {
+pub fn normalize_spectrum_max(s: Spectrum) -> Spectrum {
     let max = s.iter().max_by(|l, r| l.total_cmp(r)).unwrap();
-    core::array::from_fn(|i| s[i] / max)
+    if *max > 0.0 {
+        core::array::from_fn(|i| s[i] / max)
+    } else {
+        s
+    }
+}
+pub fn normalize_spectrum_sum(s: Spectrum) -> Spectrum {
+    //let sum_sq: f32 = s.iter().map(|v| if *v < 0.0 { -*v } else { *v }).sum();
+    let sum_sq: f32 = s.iter().map(|v| v * v).sum();
+    if sum_sq > 0.0 {
+        let n = 1.0 / sum_sq.sqrt();
+        core::array::from_fn(|i| s[i] * n)
+    } else {
+        s
+    }
 }
 
 pub fn max_bpm(spectrum: Spectrum) -> BPM {
@@ -145,20 +222,19 @@ pub fn max_bpm(spectrum: Spectrum) -> BPM {
         .unwrap()
         .0;
 
-    let max_bpm = index_to_bpm(spectrum_index + BASE_FREQ_INDEX);
+    let max_bpm = index_to_bpm(spectrum_index);
     BPM(max_bpm as _)
 }
 
 impl FFTEstimator {
     pub fn add_sample(&mut self, sample: f32) -> Option<Spectrum> {
-        self.samples[self.next_sample_pos as usize] = sample;
-        self.next_sample_pos += 1;
-        if self.next_sample_pos as usize == self.samples.len() {
-            self.next_sample_pos = 0;
-            let spectrum = microfft::real::rfft_128(&mut self.samples);
+        self.samples.add(sample);
+        if self.samples.num_valid() == NUM_FFT_SAMPLES {
+            let mut samples = core::array::from_fn(|i| self.samples.inner()[i]);
+            let spectrum = microfft::real::rfft_256(&mut samples);
             let spectrum: Spectrum =
                 core::array::from_fn(|i| spectrum[i + BASE_FREQ_INDEX].l1_norm());
-            Some(normalize_spectrum(spectrum))
+            Some(spectrum)
         } else {
             None
         }
@@ -176,22 +252,30 @@ impl Default for SpectrumSmoother {
     }
 }
 
+fn kernel_smooth(spectrum: Spectrum) -> Spectrum {
+    core::array::from_fn(|i| {
+        let mut s = 100.0 * spectrum[i];
+        if i > 0 {
+            s += spectrum[i - 1];
+        }
+        if i < spectrum.len() - 1 {
+            s += spectrum[i + 1];
+        }
+        s /= 120.0;
+        s
+    })
+}
+
 impl SpectrumSmoother {
     pub fn add(&mut self, spectrum: Spectrum) -> Spectrum {
-        self.spectrum_agg = normalize_spectrum(core::array::from_fn(|i| {
-            let mut s = 2.0 * self.spectrum_agg[i];
-            if i > 0 {
-                s += self.spectrum_agg[i - 1];
-            }
-            if i < self.spectrum_agg.len() - 1 {
-                s += self.spectrum_agg[i + 1];
-            }
-            s /= 4.0;
-
-            let alpha = 0.5;
-            s * alpha + spectrum[i] * (1.0 - alpha)
-        }));
-        self.spectrum_agg
+        let l = self.spectrum_agg;
+        let r = normalize_spectrum_sum(spectrum);
+        self.spectrum_agg = core::array::from_fn(|i| {
+            let alpha = 0.99;
+            l[i] * alpha + r[i] * (1.0 - alpha)
+        });
+        //self.spectrum_agg
+        kernel_smooth(self.spectrum_agg)
     }
 }
 
