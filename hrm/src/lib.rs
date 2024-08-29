@@ -1,6 +1,5 @@
 #![no_std]
 
-use micromath::F32Ext;
 use util::RingBuffer;
 
 /*
@@ -207,7 +206,7 @@ pub fn normalize_spectrum_sum(s: Spectrum) -> Spectrum {
     //let sum_sq: f32 = s.iter().map(|v| if *v < 0.0 { -*v } else { *v }).sum();
     let sum_sq: f32 = s.iter().map(|v| v * v).sum();
     if sum_sq > 0.0 {
-        let n = 1.0 / sum_sq.sqrt();
+        let n = 1.0 / libm::sqrtf(sum_sq);
         core::array::from_fn(|i| s[i] * n)
     } else {
         s
@@ -279,6 +278,55 @@ impl SpectrumSmoother {
     }
 }
 
+pub struct BiasedSampleFilter {
+    inner: biquad::DirectForm1<f32>,
+    bpm: Option<BPM>,
+}
+
+impl BiasedSampleFilter {
+    fn coefficients_unbiased() -> biquad::Coefficients<f32> {
+        use biquad::*;
+        let fs = 25.hz();
+        let f0 = 2.hz();
+        Coefficients::<f32>::from_params(biquad::Type::BandPass, fs, f0, Q_BUTTERWORTH_F32).unwrap()
+    }
+    fn coefficients_biased(bpm: BPM) -> biquad::Coefficients<f32> {
+        use biquad::*;
+        let fs = 25.hz();
+        let f0 = ((bpm.0 as f32) / 60.0).hz();
+
+        const FILTER_WIDTH_FACTOR: f32 = 100.0;
+        Coefficients::<f32>::from_params(
+            biquad::Type::BandPass,
+            fs,
+            f0,
+            Q_BUTTERWORTH_F32 * FILTER_WIDTH_FACTOR,
+        )
+        .unwrap()
+    }
+
+    pub fn new() -> Self {
+        Self {
+            inner: biquad::DirectForm1::<f32>::new(Self::coefficients_unbiased()),
+            bpm: None,
+        }
+    }
+
+    pub fn tune(&mut self, bpm: BPM) {
+        use biquad::*;
+        if self.bpm != Some(bpm) {
+            self.inner
+                .update_coefficients(Self::coefficients_biased(bpm));
+            self.bpm = Some(bpm);
+        }
+    }
+
+    pub fn filter(&mut self, val: i16) -> f32 {
+        use biquad::*;
+        self.inner.run(val as f32)
+    }
+}
+
 #[derive(Copy, Clone)]
 enum BeatRegion {
     Above,
@@ -343,6 +391,7 @@ impl EstimateSampleRate for UncalibratedEstimator {
 const MIN_BPM: u16 = 30;
 const MAX_BPM: u16 = 230;
 
+#[derive(PartialEq, Clone, Copy)]
 pub struct BPM(pub u16);
 
 impl<E: EstimateSampleRate> HeartbeatDetector<E> {

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+biquad = "0.4.2"
+libm = "0.2.8"
 microfft = "0.6.0"
-micromath = "2.1.0"
 util = { path = "../util" }
