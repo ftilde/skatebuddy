@@ -140,17 +140,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut bpm_vals = Vec::new();
     let mut bpm_vals_freq = Vec::new();
     let mut bpm_vals_freq_smooth = Vec::new();
-    for (i, v) in raw_vals.iter() {
-        if let Some(bpm) = hrm_detector.add_sample(*v).1 {
-            bpm_vals.push((*i, bpm.0 as f32));
-        }
-    }
+
     let mut window = std::collections::VecDeque::new();
     let mut prev = 0.0;
     let mut biased_filter = hrm::BiasedSampleFilter::new();
     for (j, ((i, v), (ir, vr))) in vals.iter().zip(raw_vals.iter()).enumerate() {
         //window.push_back((*ir, (*vr as f32 - prev).abs()));
         let filtered = biased_filter.filter(*vr);
+
+        if let Some(bpm) = hrm_detector.add_sample(filtered) {
+            bpm_vals.push((*i, bpm.0 as f32));
+        }
+
         window.push_back((*i, filtered));
         prev = *vr as f32;
         if window.len() == 512 {
@@ -166,8 +167,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let spectrum = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum));
             let spectrum_orig = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum_orig));
             if j % 512 == 0 {
-                plot_values_multiple(&[&spectrum_orig, &spectrum])?;
-                plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
+                //plot_values_multiple(&[&spectrum_orig, &spectrum])?;
+                //plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
             }
 
             bpm_vals_freq.push((*i, bpm.0 as f32));

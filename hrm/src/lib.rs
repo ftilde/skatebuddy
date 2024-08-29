@@ -295,7 +295,7 @@ impl BiasedSampleFilter {
         let fs = 25.hz();
         let f0 = ((bpm.0 as f32) / 60.0).hz();
 
-        const FILTER_WIDTH_FACTOR: f32 = 100.0;
+        const FILTER_WIDTH_FACTOR: f32 = 10.0;
         Coefficients::<f32>::from_params(
             biquad::Type::BandPass,
             fs,
@@ -334,27 +334,25 @@ enum BeatRegion {
 }
 
 #[derive(Default)]
-pub struct OutlierFilter {
-    values: RingBuffer<7, u16>,
+pub struct OutlierFilter<T> {
+    values: RingBuffer<7, T>,
 }
 
-impl OutlierFilter {
-    pub fn filter(&mut self, v: u16) -> u16 {
+impl<T: Ord + Clone> OutlierFilter<T> {
+    pub fn filter(&mut self, v: T) -> T {
         self.values.add(v);
         let mut v = self.values.inner().clone();
         let v = &mut v[..self.values.num_valid()];
         let (_, median, _) = v.select_nth_unstable(v.len() / 2);
-        *median
+        median.clone()
     }
 }
 
 pub struct HeartbeatDetector<E> {
-    filter_state: HrmFilter,
-    outlier_filter: OutlierFilter,
     region: BeatRegion,
     sample_count: usize,
     last_beat_sample: usize,
-    min_since_cross: i32,
+    min_since_cross: f32,
     min_sample: usize,
     sr_estimator: E,
 }
@@ -362,12 +360,10 @@ pub struct HeartbeatDetector<E> {
 impl<E> HeartbeatDetector<E> {
     pub fn new(sr_estimator: E) -> Self {
         HeartbeatDetector {
-            filter_state: HrmFilter::new(),
-            outlier_filter: Default::default(),
             region: BeatRegion::Below,
             sample_count: 0,
             last_beat_sample: 0,
-            min_since_cross: i32::MAX,
+            min_since_cross: f32::MAX,
             min_sample: 0,
             sr_estimator,
         }
@@ -398,17 +394,16 @@ impl<E: EstimateSampleRate> HeartbeatDetector<E> {
     pub fn millis_per_sample(&mut self) -> f32 {
         self.sr_estimator.millis_per_sample()
     }
-    pub fn add_sample(&mut self, s: i16) -> (f32, Option<BPM>) {
-        let filtered = self.filter_state.filter(s);
+    pub fn add_sample(&mut self, s: f32) -> Option<BPM> {
         self.sample_count += 1;
         self.sr_estimator.note_sample();
         let bpm = {
-            if filtered < self.min_since_cross {
-                self.min_since_cross = filtered;
+            if s < self.min_since_cross {
+                self.min_since_cross = s;
                 self.min_sample = self.sample_count;
             }
 
-            match (self.region, filtered > 0) {
+            match (self.region, s > 0.0) {
                 (BeatRegion::Above, false) => {
                     self.region = BeatRegion::Below;
                     None
@@ -416,7 +411,7 @@ impl<E: EstimateSampleRate> HeartbeatDetector<E> {
                 (BeatRegion::Below, true) => {
                     let samples_since_last_beat = self.min_sample - self.last_beat_sample;
                     self.last_beat_sample = self.min_sample;
-                    self.min_since_cross = i32::MAX;
+                    self.min_since_cross = f32::MAX;
 
                     let beat_duration_millis =
                         samples_since_last_beat as f32 * self.millis_per_sample();
@@ -425,8 +420,6 @@ impl<E: EstimateSampleRate> HeartbeatDetector<E> {
                     self.region = BeatRegion::Above;
 
                     if MIN_BPM <= bpm && bpm < MAX_BPM {
-                        let bpm = self.outlier_filter.filter(bpm);
-
                         Some(BPM(bpm))
                     } else {
                         None
@@ -436,6 +429,6 @@ impl<E: EstimateSampleRate> HeartbeatDetector<E> {
             }
         };
 
-        (filtered as f32, bpm)
+        bpm
     }
 }
