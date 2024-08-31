@@ -239,10 +239,6 @@ impl FFTEstimator {
     }
 }
 
-//struct Complex {
-//    real: f32,
-//    imag: f32,
-//}
 type Complex = num_complex::Complex32;
 
 #[derive(Default)]
@@ -258,18 +254,19 @@ pub struct SparseFFTEstimator {
 impl SparseFFTEstimator {
     pub fn add_sample(&mut self, sample: f32) -> Option<Spectrum> {
         let pos = self.history.next();
+        let complete = self.history.is_full();
         let base = Complex::from_polar(1.0, core::f32::consts::TAU / NUM_FFT_SAMPLES as f32);
-        for (i, v) in self.spectrum.iter_mut().enumerate() {
-            let i = i + BASE_FREQ_INDEX;
-            *v += base.powu((i * pos) as u32).scale(sample);
-        }
+        let phase_increment = base.powu((pos) as u32);
+        let mut freq_phase_vec = phase_increment.powu(BASE_FREQ_INDEX as u32);
 
         let old = self.history.add(sample);
-        if self.history.is_full() {
-            for (i, v) in self.spectrum.iter_mut().enumerate() {
-                let i = i + BASE_FREQ_INDEX;
-                *v -= base.powu((i * pos) as u32).scale(old);
-            }
+
+        for v in self.spectrum.iter_mut() {
+            *v += freq_phase_vec.scale(sample - old);
+            freq_phase_vec *= phase_increment;
+        }
+
+        if complete {
             Some(core::array::from_fn(|i| self.spectrum[i].norm()))
         } else {
             None

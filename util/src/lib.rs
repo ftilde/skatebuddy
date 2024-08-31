@@ -94,6 +94,14 @@ impl<const N: usize, T> RingBuffer<N, T> {
     pub fn valid_values(&self) -> &[T] {
         &self.ring_buffer[..self.num_total.min(N)]
     }
+
+    pub fn is_full(&self) -> bool {
+        self.num_valid() == N
+    }
+
+    pub fn next(&self) -> usize {
+        self.next
+    }
 }
 
 #[cfg(test)]
