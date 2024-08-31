@@ -67,7 +67,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let coefficients =
         Coefficients::<f32>::from_params(biquad::Type::HighPass, fs, f0, Q_BUTTERWORTH_F32)
             .unwrap();
-    let mut filter = DirectForm2Transposed::<f32>::new(coefficients);
+    //let mut filter = DirectForm2Transposed::<f32>::new(coefficients);
+    let mut filter = hrm::UnbiasedBiquadHighPass::new();
     //let mut filter = hrm::KernelSampleFilter::new();
     //let mut filter = hrm::UnbiasedBiquadSampleFilter::new();
 
@@ -83,9 +84,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         let val = gradient_clip.add_value(row.val);
         //let val = row.val;
-        vals.push((ms as f32, filter.run(val as f32)));
-        //vals.push((ms as f32, filter.filter(val) as f32));
-        raw_vals.push((ms as f32, val));
+        //vals.push((ms as f32, filter.run(val as f32)));
+        vals.push((ms as f32, filter.filter(val) as f32));
+        raw_vals.push((ms as f32, row.val));
         ms += sample_delay;
     }
 
@@ -137,13 +138,16 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     //}
 
-    let mut hrm_detector = hrm::HeartbeatDetector::new(hrm::UncalibratedEstimator);
+    let mut hrm_detector = hrm::ZeroCrossHeartbeatDetector::new(hrm::UncalibratedEstimator);
     //let mut freq_detector = hrm::FFTEstimator::default();
     let mut freq_detector = hrm::SparseFFTEstimator::default();
     let mut spec_smoother = hrm::SpectrumSmoother::default();
     let mut bpm_vals = Vec::new();
     let mut bpm_vals_freq = Vec::new();
     let mut bpm_vals_freq_smooth = Vec::new();
+    let mut bpm_vals_baseline = Vec::new();
+
+    let mut baseline_filter = hrm::HeartbeatDetector::new(hrm::UncalibratedEstimator);
 
     let mut window = std::collections::VecDeque::new();
     let mut prev = 0.0;
@@ -172,15 +176,24 @@ fn main() -> Result<(), Box<dyn Error>> {
             let spectrum = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum));
             let spectrum_orig = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum_orig));
             if j % 512 == 0 {
-                plot_values_multiple(&[&spectrum_orig, &spectrum])?;
-                plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
+                //plot_values_multiple(&[&spectrum_orig, &spectrum])?;
+                //plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
             }
 
             bpm_vals_freq.push((*i, bpm.0 as f32));
             bpm_vals_freq_smooth.push((*i, bpm_smooth.0 as f32));
         }
+
+        if let Some(bpm) = baseline_filter.add_sample(*vr).1 {
+            bpm_vals_baseline.push((*i, bpm.0 as f32));
+        }
     }
-    plot_values_multiple(&[&bpm_vals, &bpm_vals_freq, &bpm_vals_freq_smooth])?;
+    plot_values_multiple(&[
+        &bpm_vals,
+        &bpm_vals_freq,
+        &bpm_vals_freq_smooth,
+        &bpm_vals_baseline,
+    ])?;
 
     for (i, o) in vals[50..].iter().zip(indata.iter_mut()) {
         *o = i.1;

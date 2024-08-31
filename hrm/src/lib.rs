@@ -102,6 +102,30 @@ impl UnbiasedBiquadSampleFilter {
     }
 }
 
+pub struct UnbiasedBiquadHighPass {
+    inner: biquad::DirectForm2Transposed<f32>,
+}
+
+impl UnbiasedBiquadHighPass {
+    pub fn new() -> Self {
+        use biquad::*;
+        let fs = 25.hz();
+        let f0 = 1.0.hz();
+
+        let coefficients =
+            Coefficients::<f32>::from_params(biquad::Type::HighPass, fs, f0, Q_BUTTERWORTH_F32)
+                .unwrap();
+        Self {
+            inner: DirectForm2Transposed::<f32>::new(coefficients),
+        }
+    }
+
+    pub fn filter(&mut self, val: i16) -> f32 {
+        use biquad::*;
+        self.inner.run(val as f32)
+    }
+}
+
 pub struct ExpMean {
     acc: f32,
     alpha: f32,
@@ -382,7 +406,7 @@ impl<T: Ord + Clone> OutlierFilter<T> {
     }
 }
 
-pub struct HeartbeatDetector<E> {
+pub struct ZeroCrossHeartbeatDetector<E> {
     region: BeatRegion,
     sample_count: usize,
     last_beat_sample: usize,
@@ -391,9 +415,9 @@ pub struct HeartbeatDetector<E> {
     sr_estimator: E,
 }
 
-impl<E> HeartbeatDetector<E> {
+impl<E> ZeroCrossHeartbeatDetector<E> {
     pub fn new(sr_estimator: E) -> Self {
-        HeartbeatDetector {
+        ZeroCrossHeartbeatDetector {
             region: BeatRegion::Below,
             sample_count: 0,
             last_beat_sample: 0,
@@ -424,7 +448,7 @@ const MAX_BPM: u16 = 230;
 #[derive(PartialEq, Clone, Copy)]
 pub struct BPM(pub u16);
 
-impl<E: EstimateSampleRate> HeartbeatDetector<E> {
+impl<E: EstimateSampleRate> ZeroCrossHeartbeatDetector<E> {
     pub fn millis_per_sample(&mut self) -> f32 {
         self.sr_estimator.millis_per_sample()
     }
@@ -464,5 +488,44 @@ impl<E: EstimateSampleRate> HeartbeatDetector<E> {
         };
 
         bpm
+    }
+}
+
+pub struct HeartbeatDetector<E> {
+    gradient_clip: GradientClip,
+    high_pass: UnbiasedBiquadHighPass,
+    freq_detector: SparseFFTEstimator,
+    spec_smoother: SpectrumSmoother,
+    biased_filter: BiasedSampleFilter,
+    cross_detector: ZeroCrossHeartbeatDetector<E>,
+}
+
+impl<E> HeartbeatDetector<E> {
+    pub fn new(sr_estimator: E) -> Self {
+        Self {
+            gradient_clip: Default::default(),
+            high_pass: UnbiasedBiquadHighPass::new(),
+            freq_detector: Default::default(),
+            spec_smoother: Default::default(),
+            biased_filter: BiasedSampleFilter::new(),
+            cross_detector: ZeroCrossHeartbeatDetector::new(sr_estimator),
+        }
+    }
+}
+impl<E: EstimateSampleRate> HeartbeatDetector<E> {
+    pub fn millis_per_sample(&mut self) -> f32 {
+        self.cross_detector.millis_per_sample()
+    }
+    pub fn add_sample(&mut self, s: i16) -> (f32, Option<BPM>) {
+        let s_clip = self.gradient_clip.add_value(s);
+        let s_hp = self.high_pass.filter(s_clip);
+        if let Some(spectrum) = self.freq_detector.add_sample(s_hp) {
+            let spectrum = self.spec_smoother.add(spectrum);
+            let bpm = max_bpm(spectrum);
+            self.biased_filter.tune(bpm);
+        }
+        let s_bp = self.biased_filter.filter(s);
+        let bpm = self.cross_detector.add_sample(s_bp);
+        (s_bp, bpm)
     }
 }

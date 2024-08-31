@@ -1,4 +1,3 @@
-use crate::heartbeat::HeartbeatDetector;
 use arrform::*;
 use core::fmt::Write;
 use drivers::lpm013m1126c::Rgb111;
@@ -8,6 +7,7 @@ use embedded_graphics::{
     geometry::{Point, Size},
     mono_font::MonoTextStyle,
 };
+use hrm::HeartbeatDetector;
 use littlefs2::path::PathBuf;
 use util::RingBuffer;
 
@@ -17,16 +17,41 @@ use crate::{
     Context,
 };
 
+pub struct SampleCountingEstimator {
+    num_samples: usize,
+    start: Instant,
+}
+impl SampleCountingEstimator {
+    fn new() -> Self {
+        Self {
+            num_samples: 0,
+            start: Instant::now(),
+        }
+    }
+}
+impl hrm::EstimateSampleRate for SampleCountingEstimator {
+    fn note_sample(&mut self) {
+        if self.num_samples == 0 {
+            self.start = Instant::now();
+        }
+        self.num_samples += 1;
+    }
+
+    fn millis_per_sample(&self) -> f32 {
+        self.start.elapsed().as_millis() as f32 / (self.num_samples - 1) as f32
+    }
+}
+
 struct DrawState {
     filtered: RingBuffer<176, f32>,
-    bpm_detector: HeartbeatDetector,
+    bpm_detector: HeartbeatDetector<SampleCountingEstimator>,
 }
 
 impl Default for DrawState {
     fn default() -> Self {
         DrawState {
             filtered: Default::default(),
-            bpm_detector: Default::default(),
+            bpm_detector: hrm::HeartbeatDetector::new(SampleCountingEstimator::new()),
         }
     }
 }
