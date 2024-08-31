@@ -35,7 +35,7 @@ const FILTER_VALS: [i8; FILTER_SIZE] = [
     -22, -12, 1, 9, 7, 0, -5, -3, 5, 12, 14, 10, 4, 0, 3, 9, 13, 12, 5, -5, -12, -30,
 ];
 
-pub struct HrmFilter {
+pub struct KernelSampleFilter {
     history: [i16; FILTER_SIZE],
     next_pos: usize,
 }
@@ -50,7 +50,7 @@ fn scalar_product(v1: &[i8], v2: &[i16]) -> i32 {
     sum
 }
 
-impl HrmFilter {
+impl KernelSampleFilter {
     pub fn new() -> Self {
         Self {
             history: [0; FILTER_SIZE],
@@ -77,31 +77,30 @@ impl HrmFilter {
         out
     }
 }
-//
-//pub struct HrmFilter {
-//    inner: biquad::DirectForm2Transposed<f32>,
-//}
-//
-//impl HrmFilter {
-//    pub fn new() -> Self {
-//        use biquad::*;
-//        let fs = 25.hz();
-//        let f0 = 2.hz();
-//
-//        let coefficients =
-//            Coefficients::<f32>::from_params(biquad::Type::BandPass, fs, f0, Q_BUTTERWORTH_F32)
-//                .unwrap();
-//        Self {
-//            inner: DirectForm2Transposed::<f32>::new(coefficients),
-//        }
-//    }
-//
-//    pub fn filter(&mut self, val: i16) -> f32 {
-//        use biquad::*;
-//        self.inner.run(val as f32)
-//    }
-//}
-//
+
+pub struct UnbiasedBiquadSampleFilter {
+    inner: biquad::DirectForm2Transposed<f32>,
+}
+
+impl UnbiasedBiquadSampleFilter {
+    pub fn new() -> Self {
+        use biquad::*;
+        let fs = 25.hz();
+        let f0 = 2.hz();
+
+        let coefficients =
+            Coefficients::<f32>::from_params(biquad::Type::BandPass, fs, f0, Q_BUTTERWORTH_F32)
+                .unwrap();
+        Self {
+            inner: DirectForm2Transposed::<f32>::new(coefficients),
+        }
+    }
+
+    pub fn filter(&mut self, val: i16) -> f32 {
+        use biquad::*;
+        self.inner.run(val as f32)
+    }
+}
 
 pub struct ExpMean {
     acc: f32,
@@ -240,6 +239,44 @@ impl FFTEstimator {
     }
 }
 
+//struct Complex {
+//    real: f32,
+//    imag: f32,
+//}
+type Complex = num_complex::Complex32;
+
+#[derive(Default)]
+pub struct SparseFFTEstimator {
+    history: RingBuffer<NUM_FFT_SAMPLES, f32>,
+    spectrum: [Complex; SPECTRUM_SIZE],
+}
+
+//const FFT_EXP_BASE: Complex = {
+//    Complex32::
+//};
+
+impl SparseFFTEstimator {
+    pub fn add_sample(&mut self, sample: f32) -> Option<Spectrum> {
+        let pos = self.history.next();
+        let base = Complex::from_polar(1.0, core::f32::consts::TAU / NUM_FFT_SAMPLES as f32);
+        for (i, v) in self.spectrum.iter_mut().enumerate() {
+            let i = i + BASE_FREQ_INDEX;
+            *v += base.powu((i * pos) as u32).scale(sample);
+        }
+
+        let old = self.history.add(sample);
+        if self.history.is_full() {
+            for (i, v) in self.spectrum.iter_mut().enumerate() {
+                let i = i + BASE_FREQ_INDEX;
+                *v -= base.powu((i * pos) as u32).scale(old);
+            }
+            Some(core::array::from_fn(|i| self.spectrum[i].norm()))
+        } else {
+            None
+        }
+    }
+}
+
 pub struct SpectrumSmoother {
     spectrum_agg: Spectrum,
 }
@@ -295,7 +332,7 @@ impl BiasedSampleFilter {
         let fs = 25.hz();
         let f0 = ((bpm.0 as f32) / 60.0).hz();
 
-        const FILTER_WIDTH_FACTOR: f32 = 10.0;
+        const FILTER_WIDTH_FACTOR: f32 = 100.0;
         Coefficients::<f32>::from_params(
             biquad::Type::BandPass,
             fs,

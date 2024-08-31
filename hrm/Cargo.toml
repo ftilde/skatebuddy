@@ -7,4 +7,5 @@ edition = "2021"
 biquad = "0.4.2"
 libm = "0.2.8"
 microfft = "0.6.0"
+num-complex = { version = "0.4.6", default-features = false, features = ["libm"] }
 util = { path = "../util" }

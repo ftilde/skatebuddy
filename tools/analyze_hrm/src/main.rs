@@ -68,6 +68,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         Coefficients::<f32>::from_params(biquad::Type::HighPass, fs, f0, Q_BUTTERWORTH_F32)
             .unwrap();
     let mut filter = DirectForm2Transposed::<f32>::new(coefficients);
+    //let mut filter = hrm::KernelSampleFilter::new();
+    //let mut filter = hrm::UnbiasedBiquadSampleFilter::new();
 
     let mut gradient_clip = hrm::GradientClip::default();
     let mut ms = 0;
@@ -77,11 +79,12 @@ fn main() -> Result<(), Box<dyn Error>> {
     //let sample_rate = 1000 / sample_delay;
     for result in rdr.records() {
         let record = result?;
-        let mut row: Row = record.deserialize(None)?;
+        let row: Row = record.deserialize(None)?;
 
         let val = gradient_clip.add_value(row.val);
         //let val = row.val;
         vals.push((ms as f32, filter.run(val as f32)));
+        //vals.push((ms as f32, filter.filter(val) as f32));
         raw_vals.push((ms as f32, val));
         ms += sample_delay;
     }
@@ -135,7 +138,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     //}
 
     let mut hrm_detector = hrm::HeartbeatDetector::new(hrm::UncalibratedEstimator);
-    let mut freq_detector = hrm::FFTEstimator::default();
+    //let mut freq_detector = hrm::FFTEstimator::default();
+    let mut freq_detector = hrm::SparseFFTEstimator::default();
     let mut spec_smoother = hrm::SpectrumSmoother::default();
     let mut bpm_vals = Vec::new();
     let mut bpm_vals_freq = Vec::new();
@@ -145,6 +149,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut prev = 0.0;
     let mut biased_filter = hrm::BiasedSampleFilter::new();
     for (j, ((i, v), (ir, vr))) in vals.iter().zip(raw_vals.iter()).enumerate() {
+        window.push_back((*ir, *v as f32));
         //window.push_back((*ir, (*vr as f32 - prev).abs()));
         let filtered = biased_filter.filter(*vr);
 
@@ -152,7 +157,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             bpm_vals.push((*i, bpm.0 as f32));
         }
 
-        window.push_back((*i, filtered));
+        //window.push_back((*i, filtered));
         prev = *vr as f32;
         if window.len() == 512 {
             window.pop_front();
@@ -167,8 +172,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let spectrum = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum));
             let spectrum_orig = hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum_orig));
             if j % 512 == 0 {
-                //plot_values_multiple(&[&spectrum_orig, &spectrum])?;
-                //plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
+                plot_values_multiple(&[&spectrum_orig, &spectrum])?;
+                plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
             }
 
             bpm_vals_freq.push((*i, bpm.0 as f32));
