@@ -11,7 +11,6 @@
 // https://crates.io/crates/embedded-plots
 
 mod apps;
-mod heartbeat;
 mod settings;
 mod ui;
 mod util;
