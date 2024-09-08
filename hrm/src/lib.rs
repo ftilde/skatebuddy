@@ -200,7 +200,7 @@ impl Default for FFTEstimator {
     }
 }
 
-const NUM_FFT_SAMPLES: usize = 256;
+const NUM_FFT_SAMPLES: usize = 300;
 const BASE_FREQ_INDEX: usize = bpm_to_fft_index(45);
 const SPECTRUM_SIZE: usize = bpm_to_fft_index(230) - BASE_FREQ_INDEX;
 const fn bpm_to_fft_index(bpm: usize) -> usize {
@@ -265,10 +265,18 @@ impl FFTEstimator {
 
 type Complex = num_complex::Complex32;
 
-#[derive(Default)]
 pub struct SparseFFTEstimator {
     history: RingBuffer<NUM_FFT_SAMPLES, f32>,
     spectrum: [Complex; SPECTRUM_SIZE],
+}
+
+impl Default for SparseFFTEstimator {
+    fn default() -> Self {
+        Self {
+            history: RingBuffer::default(),
+            spectrum: core::array::from_fn(|_| Default::default()),
+        }
+    }
 }
 
 //const FFT_EXP_BASE: Complex = {
