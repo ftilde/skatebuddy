@@ -498,6 +498,7 @@ pub struct HeartbeatDetector<E> {
     spec_smoother: SpectrumSmoother,
     biased_filter: BiasedSampleFilter,
     cross_detector: ZeroCrossHeartbeatDetector<E>,
+    bpm_mean: ExpMean,
 }
 
 impl<E> HeartbeatDetector<E> {
@@ -509,6 +510,7 @@ impl<E> HeartbeatDetector<E> {
             spec_smoother: Default::default(),
             biased_filter: BiasedSampleFilter::new(),
             cross_detector: ZeroCrossHeartbeatDetector::new(sr_estimator),
+            bpm_mean: ExpMean::new(0.8),
         }
     }
 }
@@ -526,6 +528,7 @@ impl<E: EstimateSampleRate> HeartbeatDetector<E> {
         }
         let s_bp = self.biased_filter.filter(s);
         let bpm = self.cross_detector.add_sample(s_bp);
+        let bpm = bpm.map(|bpm| BPM(libm::roundf(self.bpm_mean.add(bpm.0 as f32)) as u16));
         (s_bp, bpm)
     }
 }
