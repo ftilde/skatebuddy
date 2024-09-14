@@ -288,6 +288,8 @@ impl<'g, 'a> GpsUartTransmitter<'g, 'a> {
     }
     async fn set_casic_msg_config(&mut self, config: CasicMsgConfig) {
         self.set_msg_freq(NAV_TIME_UTC, config.nav_time).await;
+        self.set_msg_freq(NAV_PV, config.nav_pv).await;
+        self.set_msg_freq(NAV_GPS_INFO, config.nav_gps_info).await;
     }
 
     async fn set_nmea_msg_config(&mut self, cfg: NMEAMsgConfig) {

@@ -282,19 +282,21 @@ async fn app_menu(ctx: &mut Context) {
         Idle,
         Accel,
         Hrm,
+        Track,
         Settings,
         System,
     }
 
     let options = [
-        ("Clock", App::ClockInfo),
-        ("Bat", App::BatInfo),
+        ("Hrm", App::Hrm),
+        ("Track", App::Track),
         ("Stop\nwatch", App::Stopwatch),
         ("Timer", App::Timer),
+        ("Clock", App::ClockInfo),
+        ("Bat", App::BatInfo),
         ("Draw", App::Draw),
         ("Idle", App::Idle),
         ("Accel", App::Accel),
-        ("Hrm", App::Hrm),
         ("Settings", App::Settings),
         ("System", App::System),
     ];
@@ -321,6 +323,7 @@ async fn app_menu(ctx: &mut Context) {
                 App::Idle => apps::idle::idle(ctx).await,
                 App::Accel => apps::accel::accel(ctx).await,
                 App::Hrm => apps::hrm::hrm(ctx).await,
+                App::Track => apps::track::track(ctx).await,
                 App::Settings => settings::settings_ui(ctx).await,
                 App::System => system_menu(ctx).await,
             }

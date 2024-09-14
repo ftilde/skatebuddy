@@ -43,8 +43,11 @@ pub(crate) async fn clock_sync_task() {
     loop {
         let before_sync = Instant::now();
         let res = {
-            let mut gps =
-                GPSReceiver::new(drivers_shared::gps::CasicMsgConfig { nav_time: 1 }).await;
+            let mut gps = GPSReceiver::new(drivers_shared::gps::CasicMsgConfig {
+                nav_time: 1,
+                ..Default::default()
+            })
+            .await;
             sync_clock(&mut gps, sync_time).await
         };
         let next_sync = if res.is_ok() {
@@ -97,9 +100,9 @@ async fn sync_clock(gps: &mut gps::GPSReceiver<'_>, timeout: Duration) -> Result
                     break Ok((now, time));
                 }
             }
-            gps::CasicMsg::Unknown(id) => {
-                defmt::println!("GPS CASIC: {:?}", id);
-            }
+            _ => {} //gps::CasicMsg::Unknown(id) => {
+                    //    defmt::println!("GPS CASIC: {:?}", id);
+                    //}
         }
     };
 
