@@ -1,12 +1,18 @@
-use core::ops::ControlFlow;
+use core::{ops::ControlFlow, sync::atomic::AtomicU32};
 
+use arrayvec::ArrayVec;
 use embassy_nrf::{
-    buffered_uarte::BufferedUarte,
+    buffered_uarte::{BufferedUarte, BufferedUarteRx, BufferedUarteTx},
     gpio::{Level, Output, OutputDrive},
     peripherals::{P0_29, PPI_CH1, PPI_CH2, PPI_GROUP1, TIMER1, UARTE0},
     uarte::Config,
 };
 
+use embassy_sync::{
+    blocking_mutex::raw::CriticalSectionRawMutex,
+    channel::Channel,
+    pubsub::{PubSubChannel, Subscriber},
+};
 use embedded_io_async::Read;
 
 use arrform::{arrform, ArrForm};
@@ -63,23 +69,23 @@ impl GPSRessources {
 
         {
             let mut gps = ret.on().await;
-
-            // ... and only enable the casic msgs that we need
-            gps.set_msg_freq(NAV_TIME_UTC, 1).await;
+            let mut sender = gps.split().1;
 
             // Disable all nmea messages
-            gps.set_nmea_msg_config(NMEAMsgConfig {
-                ..Default::default()
-            })
-            .await;
+            sender
+                .set_nmea_msg_config(NMEAMsgConfig {
+                    ..Default::default()
+                })
+                .await;
 
             // Only using gps gets us a quicker fix
-            gps.set_active_satellites(SatelliteConfig {
-                gps: true,
-                bds: false,
-                glonass: false,
-            })
-            .await;
+            sender
+                .set_active_satellites(SatelliteConfig {
+                    gps: true,
+                    bds: false,
+                    glonass: false,
+                })
+                .await;
 
             // Debug: Print all messages that are enabled
             //gps.casic_msg(CFG_MSG, &[]).await;
@@ -124,6 +130,14 @@ pub struct GPS<'a> {
     line_buf: &'a mut AsyncBufReader,
 }
 
+pub struct GpsUartReceiver<'g, 'a> {
+    uart: BufferedUarteRx<'g, 'a, UartInstance, TimerInstance>,
+    line_buf: &'g mut AsyncBufReader,
+}
+pub struct GpsUartTransmitter<'g, 'a> {
+    uart: BufferedUarteTx<'g, 'a, UartInstance, TimerInstance>,
+}
+
 impl<'a> GPS<'a> {
     fn new(ressources: &'a mut GPSRessources) -> Self {
         let mut config = Config::default();
@@ -150,6 +164,61 @@ impl<'a> GPS<'a> {
         }
     }
 
+    pub fn split(&mut self) -> (GpsUartReceiver, GpsUartTransmitter) {
+        let (rx, tx) = self.uart.split();
+
+        (
+            GpsUartReceiver {
+                uart: rx,
+                line_buf: self.line_buf,
+            },
+            GpsUartTransmitter { uart: tx },
+        )
+    }
+
+    async fn wait_for_init(&mut self) {
+        // First throw away everything until (and including) the first 0xff which signals the start
+        // of the transmission
+        loop {
+            let n_new = self.line_buf.fill(&mut self.uart).await;
+            let current_buf = self.line_buf.buf();
+            if n_new == 0 {
+                defmt::println!("wait bc unchanged len");
+                Timer::after(Duration::from_millis(1)).await;
+                continue;
+            }
+
+            if let Some(pos) = current_buf.iter().position(|b| *b == 0xff) {
+                self.line_buf.consume(pos + 1);
+                break;
+            } else {
+                self.line_buf.consume(current_buf.len());
+            }
+        }
+
+        // Then wait and drop the first 5 GPTXT messages which include chip information
+        let mut n = 0;
+        self.split()
+            .0
+            .with_messages(|m| {
+                match m {
+                    Message::Casic(_c) => {}
+                    Message::Nmea(c) => {
+                        if &c[..6] == b"$GPTXT" {
+                            n += 1;
+                            if n == 5 {
+                                return ControlFlow::Break(());
+                            }
+                        }
+                    }
+                }
+                ControlFlow::Continue(())
+            })
+            .await;
+    }
+}
+
+impl<'g, 'a> GpsUartTransmitter<'g, 'a> {
     async fn casic_msg(&mut self, msg_id: CASICMessageIdentifier, payload: &[u8]) {
         let len = payload.len() as u32;
         assert!(len < 2000);
@@ -217,6 +286,9 @@ impl<'a> GPS<'a> {
 
         self.casic_msg(CFG_MSG, bytemuck::bytes_of(&payload)).await
     }
+    async fn set_casic_msg_config(&mut self, config: CasicMsgConfig) {
+        self.set_msg_freq(NAV_TIME_UTC, config.nav_time).await;
+    }
 
     async fn set_nmea_msg_config(&mut self, cfg: NMEAMsgConfig) {
         fn p(i: u8) -> u8 {
@@ -242,46 +314,9 @@ impl<'a> GPS<'a> {
         );
         self.nmea_cmd(cmd.as_bytes()).await;
     }
+}
 
-    async fn wait_for_init(&mut self) {
-        // First throw away everything until (and including) the first 0xff which signals the start
-        // of the transmission
-        loop {
-            let n_new = self.line_buf.fill(&mut self.uart).await;
-            let current_buf = self.line_buf.buf();
-            if n_new == 0 {
-                defmt::println!("wait bc unchanged len");
-                Timer::after(Duration::from_millis(1)).await;
-                continue;
-            }
-
-            if let Some(pos) = current_buf.iter().position(|b| *b == 0xff) {
-                self.line_buf.consume(pos + 1);
-                break;
-            } else {
-                self.line_buf.consume(current_buf.len());
-            }
-        }
-
-        // Then wait and drop the first 5 GPTXT messages which include chip information
-        let mut n = 0;
-        self.with_messages(|m| {
-            match m {
-                Message::Casic(_c) => {}
-                Message::Nmea(c) => {
-                    if &c[..6] == b"$GPTXT" {
-                        n += 1;
-                        if n == 5 {
-                            return ControlFlow::Break(());
-                        }
-                    }
-                }
-            }
-            ControlFlow::Continue(())
-        })
-        .await;
-    }
-
+impl<'g, 'a> GpsUartReceiver<'g, 'a> {
     pub(crate) async fn with_messages<R>(
         &mut self,
         mut f: impl FnMut(Message) -> ControlFlow<R>,
@@ -449,3 +484,138 @@ impl<'a> Drop for GPS<'a> {
 const CASIC_MAGIC_HEADER_0: u8 = 0xba;
 const CASIC_MAGIC_HEADER_1: u8 = 0xce;
 const CASIC_MAGIC_HEADER: [u8; 2] = [CASIC_MAGIC_HEADER_0, CASIC_MAGIC_HEADER_1];
+
+//static CLOCK_INFO: Mutex<CriticalSectionRawMutex, RefCell<ClockInfo>> =
+const MAX_SUBSCRIBERS: usize = 3;
+const MAX_MSGS: usize = 4;
+
+type GpsPubSubChannel =
+    PubSubChannel<CriticalSectionRawMutex, CasicMsg, MAX_MSGS, MAX_SUBSCRIBERS, 1>;
+static GPS_PUB_SUB_CHANNEL: GpsPubSubChannel = GpsPubSubChannel::new();
+
+type GpsControlChannel = Channel<CriticalSectionRawMutex, GPSControlMsg, 1>;
+static GPS_CONTROL_CHANNEL: GpsControlChannel = GpsControlChannel::new();
+
+#[derive(Clone, Copy)]
+struct GpsSubscriber {
+    id: u32,
+    config: CasicMsgConfig,
+}
+
+fn compute_merged_config(subscribers: &[GpsSubscriber]) -> CasicMsgConfig {
+    let mut out = CasicMsgConfig::default();
+    for s in subscribers {
+        out = out.merge(&s.config);
+    }
+    out
+}
+
+#[derive(Default)]
+struct GpsState {
+    subscribers: ArrayVec<GpsSubscriber, MAX_SUBSCRIBERS>,
+    merged_config: CasicMsgConfig,
+}
+
+impl GpsState {
+    async fn handle_subscribers(&mut self) {
+        let msg = GPS_CONTROL_CHANNEL.receive().await;
+        match msg {
+            GPSControlMsg::Subscribe(config, id) => {
+                self.subscribers.push(GpsSubscriber { id, config });
+                self.merged_config = compute_merged_config(&self.subscribers);
+            }
+            GPSControlMsg::Unsubscribe(id) => {
+                self.subscribers = self
+                    .subscribers
+                    .clone()
+                    .into_iter()
+                    .filter(|s| s.id != id)
+                    .collect();
+
+                self.merged_config = compute_merged_config(&self.subscribers);
+            }
+        }
+    }
+}
+
+#[embassy_executor::task]
+pub(crate) async fn gps_task(mut ressources: GPSRessources) -> ! {
+    let mut state = GpsState::default();
+
+    let publisher = GPS_PUB_SUB_CHANNEL.publisher().unwrap();
+
+    loop {
+        // GPS inactive
+        defmt::println!("GPS off");
+        while state.subscribers.is_empty() {
+            state.handle_subscribers().await;
+        }
+
+        // GPS active
+        defmt::println!("GPS on");
+        let mut gps = ressources.on().await;
+        let (mut rx, mut tx) = gps.split();
+
+        let mut handle_messages = rx.with_messages(|msg| {
+            match msg {
+                Message::Casic(msg) => {
+                    publisher.publish_immediate(msg.parse());
+                }
+                Message::Nmea(s) => {
+                    let s = core::str::from_utf8(s).unwrap();
+                    defmt::println!("NMEA: {}", s);
+                }
+            }
+            ControlFlow::Continue::<()>(())
+        });
+        let mut handle_messages = core::pin::pin!(handle_messages);
+
+        while !state.subscribers.is_empty() {
+            tx.set_casic_msg_config(state.merged_config).await;
+            embassy_futures::select::select(state.handle_subscribers(), &mut handle_messages).await;
+        }
+    }
+}
+
+static RECEIVER_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+#[derive(Debug)]
+enum GPSControlMsg {
+    Subscribe(CasicMsgConfig, u32),
+    Unsubscribe(u32),
+}
+
+pub struct GPSReceiver<'a> {
+    msgs: Subscriber<'a, CriticalSectionRawMutex, CasicMsg, MAX_MSGS, MAX_SUBSCRIBERS, 1>,
+    id: u32,
+}
+
+impl Drop for GPSReceiver<'_> {
+    fn drop(&mut self) {
+        GPS_CONTROL_CHANNEL
+            .try_send(GPSControlMsg::Unsubscribe(self.id))
+            .unwrap();
+    }
+}
+
+impl<'a> GPSReceiver<'a> {
+    pub async fn new(config: CasicMsgConfig) -> GPSReceiver<'a> {
+        let id = RECEIVER_ID_COUNTER.fetch_add(1, core::sync::atomic::Ordering::Relaxed);
+        GPS_CONTROL_CHANNEL
+            .send(GPSControlMsg::Subscribe(config, id))
+            .await;
+        GPSReceiver {
+            msgs: GPS_PUB_SUB_CHANNEL.subscriber().unwrap(),
+            id,
+        }
+    }
+
+    pub async fn receive(&mut self) -> CasicMsg {
+        loop {
+            match self.msgs.next_message().await {
+                embassy_sync::pubsub::WaitResult::Lagged(_) => {}
+                embassy_sync::pubsub::WaitResult::Message(r) => return r,
+            }
+        }
+    }
+}

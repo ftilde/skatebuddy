@@ -17,16 +17,30 @@ pub struct RawCasicMsg<'a> {
 }
 
 impl<'a> RawCasicMsg<'a> {
-    pub fn parse(self) -> CasicMsg<'a> {
+    pub fn parse(self) -> CasicMsg {
         match self.id {
             NAV_TIME_UTC => CasicMsg::NavTimeUTC(*bytemuck::from_bytes(self.payload)),
-            _ => CasicMsg::Unknown(self),
+            _ => CasicMsg::Unknown(self.id),
         }
     }
 }
 
 pub const NAV_TIME_UTC: CASICMessageIdentifier = [0x01, 0x10];
 pub const CFG_MSG: CASICMessageIdentifier = [0x06, 0x01];
+
+#[repr(C)]
+#[derive(Copy, Clone, Default, Debug, defmt::Format, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct CasicMsgConfig {
+    pub nav_time: u16,
+}
+
+impl CasicMsgConfig {
+    pub fn merge(&self, other: &Self) -> Self {
+        CasicMsgConfig {
+            nav_time: self.nav_time.max(other.nav_time),
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, defmt::Format, bytemuck::Zeroable, bytemuck::Pod)]
@@ -46,7 +60,8 @@ pub struct NavTimeUTC {
     pub date_valid: u8,
 }
 
-pub enum CasicMsg<'a> {
+#[derive(Clone)]
+pub enum CasicMsg {
     NavTimeUTC(NavTimeUTC),
-    Unknown(RawCasicMsg<'a>),
+    Unknown(CASICMessageIdentifier),
 }

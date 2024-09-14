@@ -1,10 +1,9 @@
 use core::{
     cell::RefCell,
-    ops::ControlFlow,
     sync::atomic::{AtomicI32, AtomicU32, Ordering},
 };
 
-use crate::gps;
+use crate::gps::{self, GPSReceiver};
 
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
 pub use embassy_time::*;
@@ -32,7 +31,7 @@ async fn sync_delay(delay: Duration) {
 }
 
 #[embassy_executor::task]
-pub(crate) async fn clock_sync_task(mut gps: gps::GPSRessources) {
+pub(crate) async fn clock_sync_task() {
     const INITIAL_SYNC_TIME: Duration = Duration::from_secs(2 * 60);
     const INCREMENTAL_SYNC_TIME: Duration = Duration::from_secs(1 * 60);
 
@@ -44,7 +43,8 @@ pub(crate) async fn clock_sync_task(mut gps: gps::GPSRessources) {
     loop {
         let before_sync = Instant::now();
         let res = {
-            let mut gps = gps.on().await;
+            let mut gps =
+                GPSReceiver::new(drivers_shared::gps::CasicMsgConfig { nav_time: 1 }).await;
             sync_clock(&mut gps, sync_time).await
         };
         let next_sync = if res.is_ok() {
@@ -82,36 +82,27 @@ pub fn force_sync() {
     CLOCK_SYNC_SIG.signal(ClockSyncCmd::SyncNow);
 }
 
-async fn sync_clock(gps: &mut gps::GPS<'_>, timeout: Duration) -> Result<(), ()> {
+async fn sync_clock(gps: &mut gps::GPSReceiver<'_>, timeout: Duration) -> Result<(), ()> {
     let give_up = Instant::now() + timeout;
 
-    let res = gps
-        .with_messages(|msg| {
-            if give_up < Instant::now() {
-                return ControlFlow::Break(Err(()));
-            }
-            match msg {
-                gps::Message::Casic(c) => match c.parse() {
-                    gps::CasicMsg::NavTimeUTC(c) => {
-                        defmt::println!("GPS nav: {:?}", c);
-                        if let Ok(time) = reconstruct_time(c) {
-                            let now = Instant::now();
-                            return ControlFlow::Break(Ok((now, time)));
-                        }
-                    }
-                    gps::CasicMsg::Unknown(c) => {
-                        defmt::println!("GPS CASIC: {:?}, {:?}", c.id, c.payload);
-                    }
-                },
-                gps::Message::Nmea(s) => {
-                    let s = core::str::from_utf8(s).unwrap();
-                    defmt::println!("NMEA: {}", s);
+    let res = loop {
+        if give_up < Instant::now() {
+            break Err(());
+        }
+        match gps.receive().await {
+            gps::CasicMsg::NavTimeUTC(c) => {
+                defmt::println!("GPS nav: {:?}", c);
+                if let Ok(time) = reconstruct_time(c) {
+                    let now = Instant::now();
+                    break Ok((now, time));
                 }
             }
+            gps::CasicMsg::Unknown(id) => {
+                defmt::println!("GPS CASIC: {:?}", id);
+            }
+        }
+    };
 
-            ControlFlow::Continue(())
-        })
-        .await;
     if let Ok((now, time)) = res {
         update_clock_info(now, time);
         Ok(())

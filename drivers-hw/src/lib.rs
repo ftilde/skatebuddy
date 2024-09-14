@@ -147,7 +147,8 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     )
     .await;
 
-    spawner.spawn(time::clock_sync_task(gps)).unwrap();
+    spawner.spawn(gps::gps_task(gps)).unwrap();
+    spawner.spawn(time::clock_sync_task()).unwrap();
 
     let mag = mag::MagRessources::new(p.P1_12, p.P1_13);
     let accel = accel::AccelRessources::new(p.P1_06, p.P1_05);
