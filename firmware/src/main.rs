@@ -323,7 +323,7 @@ async fn app_menu(ctx: &mut Context) {
                 App::Idle => apps::idle::idle(ctx).await,
                 App::Accel => apps::accel::accel(ctx).await,
                 App::Hrm => apps::hrm::hrm(ctx).await,
-                App::Track => apps::track::track(ctx).await,
+                App::Track => apps::track::track_app(ctx).await,
                 App::Settings => settings::settings_ui(ctx).await,
                 App::System => system_menu(ctx).await,
             }

@@ -526,6 +526,14 @@ impl GpsState {
                 self.subscribers.push(GpsSubscriber { id, config });
                 self.merged_config = compute_merged_config(&self.subscribers);
             }
+            GPSControlMsg::UpdateConfig(config, id) => {
+                self.subscribers
+                    .iter_mut()
+                    .find(|s| s.id == id)
+                    .unwrap()
+                    .config = config;
+                self.merged_config = compute_merged_config(&self.subscribers);
+            }
             GPSControlMsg::Unsubscribe(id) => {
                 self.subscribers = self
                     .subscribers
@@ -584,6 +592,7 @@ static RECEIVER_ID_COUNTER: AtomicU32 = AtomicU32::new(0);
 #[derive(Debug)]
 enum GPSControlMsg {
     Subscribe(CasicMsgConfig, u32),
+    UpdateConfig(CasicMsgConfig, u32),
     Unsubscribe(u32),
 }
 
@@ -610,6 +619,12 @@ impl<'a> GPSReceiver<'a> {
             msgs: GPS_PUB_SUB_CHANNEL.subscriber().unwrap(),
             id,
         }
+    }
+
+    pub async fn update_config(&mut self, config: CasicMsgConfig) {
+        GPS_CONTROL_CHANNEL
+            .send(GPSControlMsg::UpdateConfig(config, self.id))
+            .await;
     }
 
     pub async fn receive(&mut self) -> CasicMsg {

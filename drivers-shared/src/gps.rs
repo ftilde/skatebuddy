@@ -101,6 +101,38 @@ pub struct NavPv {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, defmt::Format, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct NavigationData {
+    pub run_time: u32,
+    pub height_anomaly: f32,
+    pub longitude: f64,
+    pub latitude: f64,
+    pub horizontal_variance: f32,
+    pub vertical_variance: f32,
+    pub north_velocity_m_s: f32,
+    pub east_velocity_m_s: f32,
+    pub variance_speed_2d: f32,
+    pub heavenly_velocity_m_s: f32,
+}
+
+impl From<NavPv> for NavigationData {
+    fn from(value: NavPv) -> Self {
+        Self {
+            run_time: value.run_time,
+            height_anomaly: value.height_anomaly,
+            longitude: value.longitude,
+            latitude: value.latitude,
+            horizontal_variance: value.horizontal_variance,
+            vertical_variance: value.vertical_variance,
+            north_velocity_m_s: value.north_velocity_m_s,
+            east_velocity_m_s: value.east_velocity_m_s,
+            variance_speed_2d: value.variance_speed_2d,
+            heavenly_velocity_m_s: value.heavenly_velocity_m_s,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, defmt::Format, bytemuck::Zeroable, bytemuck::Pod)]
 pub struct NavGpsInfo {
     pub run_time: u32,
     pub num_view_sv: u8,

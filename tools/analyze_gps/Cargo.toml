@@ -1,0 +1,11 @@
+[package]
+name = "analyze_gps"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bytemuck = "1.18.0"
+drivers-shared = { path = "../../drivers-shared" }
+util = { path = "../../util" }
+memmap = "0.7.0"
+plotpy = "1.7.1"

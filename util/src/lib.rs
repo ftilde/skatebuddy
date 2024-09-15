@@ -1,5 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
+pub mod gps;
+
 pub fn resync_time(
     base: chrono::DateTime<chrono::Utc>,
     time: chrono::NaiveTime,
