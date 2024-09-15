@@ -81,7 +81,7 @@ pub struct NavPv {
     pub num_sv_gps: u8,
     pub num_sv_bds: u8,
     pub num_sv_gln: u8,
-    _reserved: u8,
+    pub _reserved: u8,
     pub location_dop: f32,
     pub longitude: f64,
     pub latitude: f64,
@@ -138,7 +138,7 @@ pub struct NavGpsInfo {
     pub num_view_sv: u8,
     pub num_fix_sv: u8,
     pub system: u8,
-    _reserved: u8,
+    pub _reserved: u8,
 }
 
 #[derive(Clone)]
