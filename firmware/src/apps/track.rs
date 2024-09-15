@@ -14,7 +14,7 @@ use crate::{render_top_bar, ui::TextWriter, Context};
 
 struct RecordingData {
     path: PathBuf,
-    samples: [NavigationData; 12],
+    samples: [NavigationData; 32],
     sample: usize,
 }
 
@@ -118,6 +118,8 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
 
     let mut recording_state = RecordingState::Idle;
 
+    let mut num_samples_recorded = 0;
+
     loop {
         ctx.lcd.fill(Rgb111::black());
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
@@ -131,6 +133,8 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         let _ = writeln!(w, "height: {:?}", state.height);
         let _ = writeln!(w, "vel_east: {:?}", state.vel_east);
         let _ = writeln!(w, "vel_north: {:?}", state.vel_north);
+        let track_size = num_samples_recorded * core::mem::size_of::<NavigationData>();
+        let _ = writeln!(w, "track size: {:?}B", track_size);
 
         if matches!(recording_state, RecordingState::Idle) {
             record_button.render(&mut *ctx.lcd).unwrap();
@@ -161,6 +165,7 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
 
                     if let RecordingState::Recording(data) = &mut recording_state {
                         data.add_sampale(s.into(), &mut ctx.flash).await;
+                        num_samples_recorded += 1;
                     }
                 }
                 _ => {}
@@ -170,35 +175,40 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
             }
             select::Either3::Third(e) => {
                 ctx.backlight.active().await;
-                if record_button.clicked(&e) {
-                    let path = ctx
-                        .flash
-                        .with_fs(|fs| {
-                            fs.create_dir_all(b"/gps/\0".try_into().unwrap())?;
-                            for i in 0.. {
-                                let path =
-                                    PathBuf::from(arrform!(40, "/gps/samples{}.bin", i).as_str());
-                                if fs.metadata(&path) == Err(littlefs2::io::Error::NoSuchEntry) {
-                                    return Ok(path);
-                                }
-                            }
-                            panic!("Too many recordings");
-                        })
-                        .await
-                        .unwrap();
-                    recording_state = RecordingState::Recording(RecordingData {
-                        path,
-                        samples: [NavigationData::zeroed(); 12],
-                        sample: 0,
-                    })
-                }
-                if stop_button.clicked(&e) {
-                    let RecordingState::Recording(data) = &mut recording_state else {
-                        panic!("Invalid state");
-                    };
-
-                    data.flush(&mut ctx.flash).await;
-                    recording_state = RecordingState::Idle;
+                match &mut recording_state {
+                    RecordingState::Idle => {
+                        if record_button.clicked(&e) {
+                            let path = ctx
+                                .flash
+                                .with_fs(|fs| {
+                                    fs.create_dir_all(b"/gps/\0".try_into().unwrap())?;
+                                    for i in 0.. {
+                                        let path = PathBuf::from(
+                                            arrform!(40, "/gps/samples{}.bin", i).as_str(),
+                                        );
+                                        if fs.metadata(&path)
+                                            == Err(littlefs2::io::Error::NoSuchEntry)
+                                        {
+                                            return Ok(path);
+                                        }
+                                    }
+                                    panic!("Too many recordings");
+                                })
+                                .await
+                                .unwrap();
+                            recording_state = RecordingState::Recording(RecordingData {
+                                path,
+                                samples: [NavigationData::zeroed(); 32],
+                                sample: 0,
+                            })
+                        }
+                    }
+                    RecordingState::Recording(r) => {
+                        if stop_button.clicked(&e) {
+                            r.flush(&mut ctx.flash).await;
+                            recording_state = RecordingState::Idle;
+                        }
+                    }
                 }
             }
         }
