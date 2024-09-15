@@ -20,6 +20,7 @@ fn ll_to_3d(ll: LonLat) -> Vector3<f64> {
 }
 
 pub struct RefConverter {
+    to_lon_lat: Rotation3<f64>,
     to_relative: Rotation3<f64>,
 }
 
@@ -32,7 +33,10 @@ impl RefConverter {
     pub fn new(ll: LonLat) -> Self {
         let t_ref_inv = mat_from_lon_lat(ll);
         let to_relative = t_ref_inv.inverse();
-        Self { to_relative }
+        Self {
+            to_relative,
+            to_lon_lat: t_ref_inv,
+        }
     }
 
     pub fn to_relative(&self, ll: LonLat) -> RelativePos {
@@ -42,6 +46,16 @@ impl RefConverter {
             east: relative_3d[1],
             north: relative_3d[2],
         }
+    }
+
+    pub fn to_lon_lat(&self, p: RelativePos) -> LonLat {
+        let c = Vector3::new(EARTH_RADIUS, p.east, p.north).normalize();
+        let c = self.to_lon_lat * c;
+        let on_equator = Vector3::new(c[0], c[1], 0.0).normalize();
+        let lon = libm::acos(on_equator[0]).to_degrees();
+        let lat = libm::acos(on_equator.dot(&c)).to_degrees();
+
+        LonLat { lon, lat }
     }
 
     pub fn to_relative_full(&self, p: &NavigationData) -> RelativeNavigationData {

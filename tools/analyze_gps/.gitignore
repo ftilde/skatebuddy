@@ -1,4 +1,6 @@
 /target
+*.gpx
+*.csv
 out.log
 out.py
 out.svg

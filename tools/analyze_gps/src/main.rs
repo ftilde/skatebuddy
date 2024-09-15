@@ -1,8 +1,9 @@
 use std::error::Error;
+use std::io::Write;
 
 use drivers_shared::gps::NavigationData;
 use plotpy::{Curve, Plot};
-use util::gps::{KalmanFilter, LonLat};
+use util::gps::{KalmanFilter, LonLat, RelativePos};
 
 fn plot_values(vals: &[(f32, f32)], equal: bool) -> Result<(), Box<dyn Error>> {
     let mut curve = Curve::new();
@@ -101,6 +102,21 @@ fn main() {
 
         let ground_speed = diag(filtered.vel_north, filtered.vel_east);
         speeds_filtered.push((pv.run_time as f32 / 1000.0, ground_speed));
+    }
+
+    for (name, track, speeds) in [
+        ("track.csv", &positions, &speeds),
+        ("track_smooth.csv", &positions_filtered, &speeds_filtered),
+    ] {
+        let mut file = std::fs::File::create(name).unwrap();
+        writeln!(&mut file, "latitude,longitude,speed").unwrap();
+        for (p, s) in track.iter().zip(speeds.iter()) {
+            let ll = converter.to_lon_lat(RelativePos {
+                east: p.0 as f64,
+                north: p.1 as f64,
+            });
+            writeln!(&mut file, "{},{},{}", ll.lat, ll.lon, s.1).unwrap();
+        }
     }
 
     plot_values_multiple(

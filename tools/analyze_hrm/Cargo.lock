@@ -610,6 +610,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "drivers-shared",
+ "libm 0.2.8",
  "nalgebra",
 ]
 
