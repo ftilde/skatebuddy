@@ -1988,6 +1988,7 @@ dependencies = [
  "hrm",
  "littlefs2",
  "micromath",
+ "nalgebra",
  "util",
 ]
 

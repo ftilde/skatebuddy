@@ -3,7 +3,7 @@ use std::io::Write;
 
 use drivers_shared::gps::NavigationData;
 use plotpy::{Curve, Plot};
-use util::gps::{KalmanFilter, LonLat, RelativePos};
+use util::gps::{diag, KalmanFilter, LonLat, RelativePos};
 
 fn plot_values(vals: &[(f32, f32)], equal: bool) -> Result<(), Box<dyn Error>> {
     let mut curve = Curve::new();
@@ -62,10 +62,6 @@ fn read_file(name: &str) -> Vec<NavigationData> {
     let entries: &[drivers_shared::gps::NavigationData] = bytemuck::cast_slice(&*file);
 
     entries.to_vec()
-}
-
-fn diag(x: f32, y: f32) -> f32 {
-    (x * x + y * y).sqrt()
 }
 
 fn main() {

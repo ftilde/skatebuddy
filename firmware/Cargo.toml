@@ -33,6 +33,7 @@ util = { path = "../util" }
 hrm = { path = "../hrm" }
 arrayvec = { version = "0.7.4", default-features = false }
 base64 = { version = "0.21.7", default-features = false }
+nalgebra = { version = "0.33.0", default-features = false }
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 defmt = "0.3.5"

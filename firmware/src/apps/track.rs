@@ -8,6 +8,8 @@ use drivers::{futures::select, gps::CasicMsgConfig};
 use embedded_graphics::geometry::{Point, Size};
 use embedded_graphics::mono_font::MonoTextStyle;
 use littlefs2::path::PathBuf;
+use nalgebra::Vector2;
+use util::gps::{KalmanFilter, LazyRefConverter};
 
 use crate::ui::ButtonStyle;
 use crate::{render_top_bar, ui::TextWriter, Context};
@@ -66,41 +68,35 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         ..Default::default()
     })
     .await;
-
-    let font = &embedded_graphics::mono_font::ascii::FONT_8X13;
-    //let sl = TextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
+    let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
     let sl = MonoTextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
+
+    let btn_font = &embedded_graphics::mono_font::ascii::FONT_8X13;
+    //let btn_sl = MonoTextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
 
     ctx.lcd.on().await;
 
+    #[derive(Default)]
     struct State {
         num_satellites: u8,
-        pos_valid: u8,
-        vel_valid: u8,
-        lon: f64,
-        lat: f64,
+        speed: f32,
+        speed_smooth: f32,
+        distance: f32,
+        distance_smooth: f32,
         height: f32,
-        vel_east: f32,
-        vel_north: f32,
+        last_pos: Vector2<f32>,
+        last_pos_smooth: Vector2<f32>,
     }
-
-    let mut state = State {
-        num_satellites: 0,
-        pos_valid: 0,
-        vel_valid: 0,
-        lon: 0.0,
-        lat: 0.0,
-        height: 0.0,
-        vel_east: 0.0,
-        vel_north: 0.0,
-    };
+    let mut state = State::default();
+    let mut ref_converter = LazyRefConverter::default();
+    let mut kalman = KalmanFilter::new();
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
         highlight: Rgb111::white(),
-        font,
+        font: btn_font,
     };
 
     let mut record_button = crate::ui::Button::from(crate::ui::ButtonDefinition {
@@ -116,6 +112,8 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         text: "Stop",
     });
 
+    let movement_threshold_km_h = 3.0;
+
     let mut recording_state = RecordingState::Idle;
 
     let mut num_samples_recorded = 0;
@@ -125,16 +123,14 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let mut w = TextWriter::new(&mut ctx.lcd, sl).y(10 + font.character_size.height as i32);
-        let _ = writeln!(w, "sat_n: {:?}", state.num_satellites);
-        let _ = writeln!(w, "pos_valid {:?}", state.pos_valid);
-        let _ = writeln!(w, "vel_valid: {:?}", state.vel_valid);
-        let _ = writeln!(w, "lon: {:?}", state.lon);
-        let _ = writeln!(w, "lat: {:?}", state.lat);
-        let _ = writeln!(w, "height: {:?}", state.height);
-        let _ = writeln!(w, "vel_east: {:?}", state.vel_east);
-        let _ = writeln!(w, "vel_north: {:?}", state.vel_north);
+        let _ = writeln!(w, "{:.1} km/h", state.speed * 3.6);
+        let _ = writeln!(w, "{:.1} km/h", state.speed_smooth * 3.6);
+        let _ = writeln!(w, "{:.3} km", state.distance / 1000.0);
+        let _ = writeln!(w, "{:.3} km", state.distance_smooth / 1000.0);
+        let _ = writeln!(w, "h: {}m", state.height);
         let track_size = num_samples_recorded * core::mem::size_of::<NavigationData>();
         let _ = writeln!(w, "track size: {:?}B", track_size);
+        let _ = writeln!(w, "sat_n: {:?}", state.num_satellites);
 
         if matches!(recording_state, RecordingState::Idle) {
             record_button.render(&mut *ctx.lcd).unwrap();
@@ -153,19 +149,30 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         {
             select::Either3::First(msg) => match msg {
                 CasicMsg::NavPv(s) => {
-                    crate::println!("pv msg: {:?}", s);
                     state.num_satellites = s.num_sv;
-                    state.pos_valid = s.pos_valid;
-                    state.vel_valid = s.vel_valid;
-                    state.lon = s.longitude;
-                    state.lat = s.latitude;
                     state.height = s.height_m;
-                    state.vel_east = s.east_velocity_m_s;
-                    state.vel_north = s.north_velocity_m_s;
 
-                    if let RecordingState::Recording(data) = &mut recording_state {
-                        data.add_sampale(s.into(), &mut ctx.flash).await;
-                        num_samples_recorded += 1;
+                    let s: NavigationData = s.into();
+
+                    crate::println!("pv msg: {:?}", s);
+                    let r = ref_converter.to_relative_full(&s);
+                    state.speed = r.vel.norm();
+
+                    let smooth = kalman.add_value(r.into());
+
+                    state.speed_smooth = smooth.vel.norm();
+
+                    if state.speed_smooth * 3.6 > movement_threshold_km_h {
+                        state.distance += r.pos.metric_distance(&state.last_pos);
+                        state.distance_smooth += smooth.pos.metric_distance(&state.last_pos_smooth);
+
+                        state.last_pos = r.pos;
+                        state.last_pos_smooth = smooth.pos;
+
+                        if let RecordingState::Recording(data) = &mut recording_state {
+                            data.add_sampale(s.into(), &mut ctx.flash).await;
+                            num_samples_recorded += 1;
+                        }
                     }
                 }
                 _ => {}

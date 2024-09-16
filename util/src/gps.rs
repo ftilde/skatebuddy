@@ -39,13 +39,10 @@ impl RefConverter {
         }
     }
 
-    pub fn to_relative(&self, ll: LonLat) -> RelativePos {
+    pub fn to_relative(&self, ll: LonLat) -> Vector2<f32> {
         let pos_3d = ll_to_3d(ll);
         let relative_3d = self.to_relative * pos_3d;
-        RelativePos {
-            east: relative_3d[1],
-            north: relative_3d[2],
-        }
+        Vector2::new(relative_3d[1] as f32, relative_3d[2] as f32)
     }
 
     pub fn to_lon_lat(&self, p: RelativePos) -> LonLat {
@@ -59,35 +56,66 @@ impl RefConverter {
     }
 
     pub fn to_relative_full(&self, p: &NavigationData) -> RelativeNavigationData {
-        let rel_pos = self.to_relative(LonLat {
+        let pos = self.to_relative(LonLat {
             lon: p.longitude,
             lat: p.latitude,
         });
+        let vel = Vector2::new(p.east_velocity_m_s, p.north_velocity_m_s);
 
         RelativeNavigationData {
             run_time: p.run_time,
             height_anomaly: p.height_anomaly,
-            pos_north: rel_pos.north as f32,
-            pos_east: rel_pos.east as f32,
+            pos,
+            vel,
             horizontal_variance: p.horizontal_variance,
             vertical_variance: p.vertical_variance,
-            north_velocity_m_s: p.north_velocity_m_s,
-            east_velocity_m_s: p.east_velocity_m_s,
             variance_speed_2d: p.variance_speed_2d,
             heavenly_velocity_m_s: p.heavenly_velocity_m_s,
         }
     }
 }
 
+#[derive(Default)]
+pub struct LazyRefConverter(Option<RefConverter>);
+
+impl LazyRefConverter {
+    pub fn to_relative(&mut self, ll: LonLat) -> Vector2<f32> {
+        if let Some(state) = &mut self.0 {
+            state.to_relative(ll)
+        } else {
+            self.0 = Some(RefConverter::new(ll));
+            Vector2::new(0.0, 0.0)
+        }
+    }
+
+    pub fn to_relative_full(&mut self, p: &NavigationData) -> RelativeNavigationData {
+        let pos = self.to_relative(LonLat {
+            lon: p.longitude,
+            lat: p.latitude,
+        });
+        let vel = Vector2::new(p.east_velocity_m_s, p.north_velocity_m_s);
+
+        RelativeNavigationData {
+            run_time: p.run_time,
+            height_anomaly: p.height_anomaly,
+            pos,
+            vel,
+            horizontal_variance: p.horizontal_variance,
+            vertical_variance: p.vertical_variance,
+            variance_speed_2d: p.variance_speed_2d,
+            heavenly_velocity_m_s: p.heavenly_velocity_m_s,
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
 pub struct RelativeNavigationData {
     pub run_time: u32,
     pub height_anomaly: f32,
-    pub pos_north: f32,
-    pub pos_east: f32,
+    pub pos: nalgebra::Vector2<f32>,
     pub horizontal_variance: f32,
     pub vertical_variance: f32,
-    pub north_velocity_m_s: f32,
-    pub east_velocity_m_s: f32,
+    pub vel: nalgebra::Vector2<f32>,
     pub variance_speed_2d: f32,
     pub heavenly_velocity_m_s: f32,
 }
@@ -106,11 +134,13 @@ fn square(v: f32) -> f32 {
     v * v
 }
 
+pub fn diag(x: f32, y: f32) -> f32 {
+    libm::sqrtf(x * x + y * y)
+}
+
 pub struct State {
-    pub pos_east: f32,
-    pub pos_north: f32,
-    pub vel_east: f32,
-    pub vel_north: f32,
+    pub pos: nalgebra::Vector2<f32>,
+    pub vel: nalgebra::Vector2<f32>,
 }
 
 impl KalmanFilter {
@@ -155,10 +185,10 @@ impl KalmanFilter {
             let R_k = Matrix4::from_diagonal(&R_k_diag);
 
             let observation = Vector4::new(
-                measurement.pos_east,
-                measurement.pos_north,
-                measurement.east_velocity_m_s,
-                measurement.north_velocity_m_s,
+                measurement.pos[0],
+                measurement.pos[1],
+                measurement.vel[0],
+                measurement.vel[1],
             );
 
             //Correction
@@ -174,10 +204,8 @@ impl KalmanFilter {
             kalman_state.p_a_priori = (F * P * F.transpose()) + Q;
 
             State {
-                pos_east: state[0],
-                pos_north: state[1],
-                vel_east: state[2],
-                vel_north: state[3],
+                pos: Vector2::new(state[0], state[1]),
+                vel: Vector2::new(state[2], state[3]),
             }
         } else {
             let variance_diag = Vector4::new(
@@ -188,10 +216,10 @@ impl KalmanFilter {
             );
 
             let state = Vector4::new(
-                measurement.pos_east,
-                measurement.pos_north,
-                measurement.east_velocity_m_s,
-                measurement.north_velocity_m_s,
+                measurement.pos[0],
+                measurement.pos[1],
+                measurement.vel[0],
+                measurement.vel[1],
             );
 
             self.state = Some(KalmanFilterState {
@@ -200,10 +228,8 @@ impl KalmanFilter {
                 t_in_s: measurement.run_time as f32 / 1000.0,
             });
             State {
-                pos_east: state[0],
-                pos_north: state[1],
-                vel_east: state[2],
-                vel_north: state[3],
+                pos: Vector2::new(state[0], state[1]),
+                vel: Vector2::new(state[2], state[3]),
             }
         }
     }
