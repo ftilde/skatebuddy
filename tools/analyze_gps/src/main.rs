@@ -86,7 +86,7 @@ fn main() {
     let mut kalman_filter = KalmanFilter::new();
     for pv in &entries {
         let p = converter.to_relative_full(pv);
-        positions.push((p.pos_east as f32, p.pos_north as f32));
+        positions.push((p.pos.x, p.pos.y));
         acc_x += pv.east_velocity_m_s;
         acc_y += pv.north_velocity_m_s;
         acc_positions.push((acc_x as f32, acc_y as f32));
@@ -94,9 +94,9 @@ fn main() {
         speeds.push((pv.run_time as f32 / 1000.0, ground_speed));
 
         let filtered = kalman_filter.add_value(p);
-        positions_filtered.push((filtered.pos_east as f32, filtered.pos_north as f32));
+        positions_filtered.push((filtered.pos.x, filtered.pos.y));
 
-        let ground_speed = diag(filtered.vel_north, filtered.vel_east);
+        let ground_speed = filtered.vel.norm();
         speeds_filtered.push((pv.run_time as f32 / 1000.0, ground_speed));
     }
 
