@@ -11,36 +11,12 @@ use hrm::HeartbeatDetector;
 use littlefs2::path::PathBuf;
 use util::RingBuffer;
 
+use crate::util::SampleCountingEstimator;
 use crate::{
     render_top_bar,
     ui::{ButtonStyle, TextWriter},
     Context,
 };
-
-pub struct SampleCountingEstimator {
-    num_samples: usize,
-    start: Instant,
-}
-impl SampleCountingEstimator {
-    fn new() -> Self {
-        Self {
-            num_samples: 0,
-            start: Instant::now(),
-        }
-    }
-}
-impl hrm::EstimateSampleRate for SampleCountingEstimator {
-    fn note_sample(&mut self) {
-        if self.num_samples == 0 {
-            self.start = Instant::now();
-        }
-        self.num_samples += 1;
-    }
-
-    fn millis_per_sample(&self) -> f32 {
-        self.start.elapsed().as_millis() as f32 / (self.num_samples - 1) as f32
-    }
-}
 
 struct DrawState {
     filtered: RingBuffer<176, f32>,

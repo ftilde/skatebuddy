@@ -12,6 +12,7 @@ use nalgebra::Vector2;
 use util::gps::{KalmanFilter, LazyRefConverter};
 
 use crate::ui::ButtonStyle;
+use crate::util::SampleCountingEstimator;
 use crate::{render_top_bar, ui::TextWriter, Context};
 
 struct RecordingData {
@@ -86,10 +87,9 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         height: f32,
         last_pos: Vector2<f32>,
         last_pos_smooth: Vector2<f32>,
+        bpm: u16,
     }
     let mut state = State::default();
-    let mut ref_converter = LazyRefConverter::default();
-    let mut kalman = KalmanFilter::new();
 
     let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
 
@@ -112,6 +112,12 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         text: "Stop",
     });
 
+    let mut hrm = ctx.hrm.on(&mut ctx.twi1).await;
+    hrm.enable().await;
+    let mut bpm_detector = hrm::HeartbeatDetector::new(SampleCountingEstimator::new());
+
+    let mut ref_converter = LazyRefConverter::default();
+    let mut kalman = KalmanFilter::new();
     let movement_threshold_km_h = 3.0;
 
     let mut recording_state = RecordingState::Idle;
@@ -123,6 +129,7 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         render_top_bar(&mut ctx.lcd, &ctx.battery).await;
 
         let mut w = TextWriter::new(&mut ctx.lcd, sl).y(10 + font.character_size.height as i32);
+        let _ = writeln!(w, "BPM: {}", state.bpm);
         let _ = writeln!(w, "{:.1} km/h", state.speed * 3.6);
         let _ = writeln!(w, "{:.1} km/h", state.speed_smooth * 3.6);
         let _ = writeln!(w, "{:.3} km", state.distance / 1000.0);
@@ -140,14 +147,15 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
 
         ctx.lcd.present().await;
 
-        match select::select3(
+        match select::select4(
             gps.receive(),
             ctx.button.wait_for_press(),
             touch.wait_for_action(),
+            hrm.wait_event(),
         )
         .await
         {
-            select::Either3::First(msg) => match msg {
+            select::Either4::First(msg) => match msg {
                 CasicMsg::NavPv(s) => {
                     state.num_satellites = s.num_sv;
                     state.height = s.height_m;
@@ -177,10 +185,10 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
                 }
                 _ => {}
             },
-            select::Either3::Second(_) => {
+            select::Either4::Second(_) => {
                 break;
             }
-            select::Either3::Third(e) => {
+            select::Either4::Third(e) => {
                 ctx.backlight.active().await;
                 match &mut recording_state {
                     RecordingState::Idle => {
@@ -215,6 +223,14 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
                             r.flush(&mut ctx.flash).await;
                             recording_state = RecordingState::Idle;
                         }
+                    }
+                }
+            }
+            select::Either4::Fourth(batch) => {
+                for sample in batch.1.into_iter().flatten() {
+                    if let Some(b) = bpm_detector.add_sample(sample).1 {
+                        //crate::println!("Samples ms: {}:", bpm_detector.millis_per_sample());
+                        state.bpm = b.0;
                     }
                 }
             }
