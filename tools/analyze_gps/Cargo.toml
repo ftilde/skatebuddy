@@ -9,3 +9,5 @@ drivers-shared = { path = "../../drivers-shared" }
 util = { path = "../../util" }
 memmap = "0.7.0"
 plotpy = "1.7.1"
+gpx = "0.10.0"
+time = "0.3.36"

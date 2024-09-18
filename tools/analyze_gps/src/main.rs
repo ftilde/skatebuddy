@@ -1,5 +1,6 @@
-use std::error::Error;
 use std::io::Write;
+use std::time::Instant;
+use std::{error::Error, time::Duration};
 
 use drivers_shared::gps::NavigationData;
 use plotpy::{Curve, Plot};
@@ -100,19 +101,50 @@ fn main() {
         speeds_filtered.push((pv.run_time as f32 / 1000.0, ground_speed));
     }
 
+    let start = time::OffsetDateTime::now_utc();
     for (name, track, speeds) in [
-        ("track.csv", &positions, &speeds),
-        ("track_smooth.csv", &positions_filtered, &speeds_filtered),
+        ("track.gpx", &positions, &speeds),
+        ("track_smooth.gpx", &positions_filtered, &speeds_filtered),
     ] {
-        let mut file = std::fs::File::create(name).unwrap();
-        writeln!(&mut file, "latitude,longitude,speed").unwrap();
+        let file = std::fs::File::create(name).unwrap();
+        let mut points = Vec::new();
         for (p, s) in track.iter().zip(speeds.iter()) {
             let ll = converter.to_lon_lat(RelativePos {
                 east: p.0 as f64,
                 north: p.1 as f64,
             });
-            writeln!(&mut file, "{},{},{}", ll.lat, ll.lon, s.1).unwrap();
+
+            let mut point = gpx::Waypoint::new((ll.lon, ll.lat).into());
+            point.speed = Some(s.1 as _);
+            let time = start + time::Duration::checked_seconds_f32(s.0).unwrap();
+            point.time = Some(time.into());
+            points.push(point);
         }
+        let track_segment = gpx::TrackSegment { points };
+        let track = gpx::Track {
+            name: Some("Track 1".to_string()),
+            comment: None,
+            description: None,
+            source: None,
+            links: vec![],
+            type_: None,
+            number: None,
+            segments: vec![track_segment],
+        };
+        let gpx = gpx::Gpx {
+            version: gpx::GpxVersion::Gpx11,
+            creator: None,
+            metadata: None,
+            waypoints: vec![],
+            tracks: vec![track],
+            routes: vec![],
+        };
+
+        // Create file at path
+        let buf = std::io::BufWriter::new(file);
+
+        // Write to file
+        gpx::write(&gpx, buf).unwrap();
     }
 
     plot_values_multiple(
