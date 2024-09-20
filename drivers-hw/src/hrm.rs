@@ -350,6 +350,10 @@ impl<'a> Hrm<'a> {
             let mut samples = ArrayVec::from(samples);
             samples.truncate(samples_collected);
 
+            // All of the following is only relevant if we have at least one sample
+            // TODO: Why would that ever happen though? Interrupt should only fire when there are
+            // samples. Maybe we don't have enough compute time/waited too long after the interrupt
+            // and the write-ptr caught up/overtook the read-ptr??
             if let Some(first_this_batch) = samples.first() {
                 if let Some(AdjustEvent { last_value }) = self.state.adjust_event {
                     // Adjust offset so that
@@ -357,85 +361,78 @@ impl<'a> Hrm<'a> {
                     self.state.sample_offset = last_value - first_this_batch;
                     self.state.adjust_event = None;
                 }
-            }
 
-            // Single sample, only if FIFO_LEN = 0;
-            //let fifo_read_index = 0x80;
-            //let mut data = [0; 2];
-            //self.i2c
-            //    .write_read(hw::ADDR, &[fifo_read_index], &mut data)
-            //    .await
-            //    .unwrap();
+                //let sample = u16::from_be_bytes(data);
 
-            //let sample = u16::from_be_bytes(data);
-
-            // Figure out adjust mode based on raw values
-            let max_sample = *samples.iter().max().unwrap();
-            let min_sample = *samples.iter().min().unwrap();
-            let threshold = 10 * 32;
-            let max_current = self.state.hrm_led_max_current;
-            let max_val = 4095;
-            self.state.adjust_mode = match self.state.adjust_mode {
-                AdjustMode::Increasing => {
-                    if max_sample < max_val / 2 {
-                        // Reached center
-                        AdjustMode::Stable
-                    } else {
-                        AdjustMode::Increasing
+                // Figure out adjust mode based on raw values
+                let max_sample = *samples.iter().max().unwrap();
+                let min_sample = *samples.iter().min().unwrap();
+                let threshold = 10 * 32;
+                let max_val = 4095;
+                self.state.adjust_mode = match self.state.adjust_mode {
+                    AdjustMode::Increasing => {
+                        if max_sample < max_val / 2 {
+                            // Reached center
+                            AdjustMode::Stable
+                        } else {
+                            AdjustMode::Increasing
+                        }
                     }
-                }
-                AdjustMode::Decreasing => {
-                    if min_sample > max_val / 2 {
-                        // Reached center
-                        AdjustMode::Stable
-                    } else {
-                        AdjustMode::Decreasing
+                    AdjustMode::Decreasing => {
+                        if min_sample > max_val / 2 {
+                            // Reached center
+                            AdjustMode::Stable
+                        } else {
+                            AdjustMode::Decreasing
+                        }
                     }
-                }
-                AdjustMode::Stable => {
-                    if max_sample > max_val - threshold {
-                        // Oversaturation
-                        AdjustMode::Increasing
-                    } else if min_sample < threshold {
-                        // Undersaturation (? this seems the wrong way around...)
-                        AdjustMode::Decreasing
-                    } else {
-                        AdjustMode::Stable
+                    AdjustMode::Stable => {
+                        if max_sample > max_val - threshold {
+                            // Oversaturation
+                            AdjustMode::Increasing
+                        } else if min_sample < threshold {
+                            // Undersaturation (? this seems the wrong way around...)
+                            AdjustMode::Decreasing
+                        } else {
+                            AdjustMode::Stable
+                        }
                     }
-                }
-            };
+                };
 
-            // Act based on adjust mode
-            match self.state.adjust_mode {
-                AdjustMode::Increasing => {
-                    self.update_hrm_led(|l| {
-                        l.current = max_current.min(l.current + 1);
-                        defmt::println!("adjusting current up: {}", l.current);
-                    })
-                    .await;
-                }
-                AdjustMode::Decreasing => {
-                    self.update_hrm_led(|l| {
-                        l.current = l.current.saturating_sub(1);
-                        defmt::println!("adjusting current down: {}", l.current);
-                    })
-                    .await;
-                }
-                AdjustMode::Stable => {}
-            }
+                let max_current = self.state.hrm_led_max_current;
 
-            // Apply offset to raw values to get a smoother transition when adjusting led current.
-            for v in samples.iter_mut() {
-                *v += self.state.sample_offset;
-            }
-            // Slowly decrease offset
-            self.state.sample_offset -= self.state.sample_offset.signum();
+                // Act based on adjust mode
+                match self.state.adjust_mode {
+                    AdjustMode::Increasing => {
+                        self.update_hrm_led(|l| {
+                            l.current = max_current.min(l.current + 1);
+                            defmt::println!("adjusting current up: {}", l.current);
+                        })
+                        .await;
+                    }
+                    AdjustMode::Decreasing => {
+                        self.update_hrm_led(|l| {
+                            l.current = l.current.saturating_sub(1);
+                            defmt::println!("adjusting current down: {}", l.current);
+                        })
+                        .await;
+                    }
+                    AdjustMode::Stable => {}
+                }
 
-            // Register adjusts for next iteration
-            if let AdjustMode::Increasing | AdjustMode::Decreasing = self.state.adjust_mode {
-                self.state.adjust_event = Some(AdjustEvent {
-                    last_value: *samples.last().unwrap(),
-                });
+                // Apply offset to raw values to get a smoother transition when adjusting led current.
+                for v in samples.iter_mut() {
+                    *v += self.state.sample_offset;
+                }
+                // Slowly decrease offset
+                self.state.sample_offset -= self.state.sample_offset.signum();
+
+                // Register adjusts for next iteration
+                if let AdjustMode::Increasing | AdjustMode::Decreasing = self.state.adjust_mode {
+                    self.state.adjust_event = Some(AdjustEvent {
+                        last_value: *samples.last().unwrap(),
+                    });
+                }
             }
 
             // now we need to adjust the PPG
