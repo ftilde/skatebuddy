@@ -74,11 +74,16 @@ fn main() {
     let mut positions = Vec::new();
     let mut positions_filtered = Vec::new();
 
-    let mut acc_x = 0.0;
-    let mut acc_y = 0.0;
-    let mut acc_positions = Vec::new();
+    //let mut acc_x = 0.0;
+    //let mut acc_y = 0.0;
+    //let mut acc_positions = Vec::new();
     let mut speeds = Vec::new();
     let mut speeds_filtered = Vec::new();
+    let mut speeds_diff = Vec::new();
+    let mut speeds_filtered_diff = Vec::new();
+    let mut last_raw = None;
+    let mut last_smooth = None;
+    let mut last_time = 0.0;
     let converter = util::gps::RefConverter::new(LonLat {
         lon: entries[0].longitude,
         lat: entries[0].latitude,
@@ -86,19 +91,32 @@ fn main() {
 
     let mut kalman_filter = KalmanFilter::new();
     for pv in &entries {
+        let time = pv.run_time as f32 / 1000.0;
         let p = converter.to_relative_full(pv);
         positions.push((p.pos.x, p.pos.y));
-        acc_x += pv.east_velocity_m_s;
-        acc_y += pv.north_velocity_m_s;
-        acc_positions.push((acc_x as f32, acc_y as f32));
+        //acc_x += pv.east_velocity_m_s;
+        //acc_y += pv.north_velocity_m_s;
+        //acc_positions.push((acc_x as f32, acc_y as f32));
         let ground_speed = diag(pv.north_velocity_m_s, pv.east_velocity_m_s);
-        speeds.push((pv.run_time as f32 / 1000.0, ground_speed));
+        speeds.push((time, ground_speed * 3.6));
 
         let filtered = kalman_filter.add_value(p);
         positions_filtered.push((filtered.pos.x, filtered.pos.y));
 
         let ground_speed = filtered.vel.norm();
-        speeds_filtered.push((pv.run_time as f32 / 1000.0, ground_speed));
+        speeds_filtered.push((time, ground_speed * 3.6));
+        println!("rt: {}", pv.run_time);
+
+        let time_diff = time - last_time;
+        if let Some(l) = last_raw {
+            speeds_diff.push((time, p.pos.metric_distance(&l) * 3.6 / time_diff));
+        }
+        last_raw = Some(p.pos);
+        if let Some(l) = last_smooth {
+            speeds_filtered_diff.push((time, filtered.pos.metric_distance(&l) * 3.6 / time_diff));
+        }
+        last_smooth = Some(filtered.pos);
+        last_time = time;
     }
 
     let start = time::OffsetDateTime::now_utc();
@@ -148,11 +166,16 @@ fn main() {
     }
 
     plot_values_multiple(
-        &[positions.as_slice(), positions_filtered.as_slice()],
+        &[
+            speeds.as_slice(),
+            speeds_filtered.as_slice(),
+            speeds_diff.as_slice(),
+            speeds_filtered_diff.as_slice(),
+        ],
         false,
     )
     .unwrap();
-    plot_values_multiple(&[speeds.as_slice(), speeds_filtered.as_slice()], false).unwrap();
-    plot_values(acc_positions.as_slice(), true).unwrap();
-    plot_values(positions.as_slice(), true).unwrap();
+    plot_values_multiple(&[positions.as_slice(), positions_filtered.as_slice()], true).unwrap();
+    //plot_values(acc_positions.as_slice(), true).unwrap();
+    //plot_values(positions.as_slice(), true).unwrap();
 }

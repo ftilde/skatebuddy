@@ -431,15 +431,23 @@ impl<'a, S: TextRenderer<Color = BinaryColor> + Clone> TextWriter<'a, S> {
         }
     }
 
-    //pub fn x(mut self, x: i32) -> Self {
-    //    self.pos.x = x;
-    //    self.line_start = x;
-    //    self
-    //}
+    pub fn x(mut self, x: i32) -> Self {
+        self.pos.x = x;
+        self.line_start = x;
+        self
+    }
 
     pub fn y(mut self, y: i32) -> Self {
         self.pos.y = y;
         self
+    }
+
+    pub fn current_y(&self) -> i32 {
+        self.pos.y
+    }
+
+    pub fn display(&mut self) -> &mut drivers::display::Display {
+        &mut self.display
     }
 
     pub fn write(&mut self, text: &str) {

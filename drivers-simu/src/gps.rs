@@ -83,7 +83,7 @@ impl<'a> GPSReceiver<'a> {
             smol::Timer::after(Duration::from_millis(wait_time.into())).await;
 
             let sat_in_view = sec.min(10) as u8;
-            let sat_in_fix = sec.saturating_sub(3).min(7) as u8;
+            let sat_in_fix = sec.saturating_sub(1).min(7) as u8;
             let run_time = sec as u32 * 1000;
             if time_to_send(self.config.nav_pv) {
                 if let Some(d) = self
