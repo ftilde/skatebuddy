@@ -24,7 +24,7 @@ embassy-executor = { git = "https://github.com/ftilde/embassy.git", branch="skat
     "executor-interrupt",
     "defmt",
     "integrated-timers",
-    "task-arena-size-131072",
+    "task-arena-size-98304",
 ]}
 #embassy-time = { version = "0.1.2", path="../embassy/embassy-time", features = [
 embassy-time = { git = "https://github.com/ftilde/embassy.git", branch="skatebuddy", features = [
