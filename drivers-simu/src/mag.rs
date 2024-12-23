@@ -2,10 +2,8 @@ use crate::time::{Duration, Timer};
 
 pub struct MagRessources {}
 
-type I2CInstance = crate::TWI1;
-
 impl MagRessources {
-    pub async fn on<'a>(&'a mut self, _i2c: &'a mut I2CInstance) -> Mag<'a> {
+    pub async fn on<'a>(&'a mut self, _i2c: &'a crate::TWI) -> Mag<'a> {
         Mag { ressources: self }
     }
 }

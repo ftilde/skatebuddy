@@ -9,10 +9,8 @@ pub struct TouchRessources {
     pub window: crate::window::WindowHandle,
 }
 
-type I2CInstance = crate::TWI0;
-
 impl TouchRessources {
-    pub async fn enabled<'a>(&'a mut self, _i2c: &'a mut I2CInstance) -> Touch<'a> {
+    pub async fn enabled<'a>(&'a mut self, _i2c: &'a crate::TWI) -> Touch<'a> {
         Touch {
             hw: self,
             prev_down: false,

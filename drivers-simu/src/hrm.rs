@@ -4,10 +4,8 @@ use std::time::Duration;
 
 pub use drivers_shared::hrm::*;
 
-type I2CInstance = crate::TWI1;
-
 impl HrmRessources {
-    pub async fn on<'a>(&'a mut self, _i2c: &'a mut I2CInstance) -> Hrm<'a> {
+    pub async fn on<'a>(&'a mut self, _i2c: &'a crate::TWI) -> Hrm<'a> {
         Hrm {
             _res: self,
             elapsed_millis: 0,

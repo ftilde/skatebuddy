@@ -1,3 +1,5 @@
+use crate::twi::{TwiHandle, TWI};
+
 use super::hardware::touch as hw;
 use embassy_nrf::{
     gpio::{Input, Level, Output, OutputDrive, Pull},
@@ -14,8 +16,6 @@ pub struct TouchRessources {
     reset: Output<'static, hw::RST>,
     irq: Input<'static, hw::IRQ>,
 }
-
-type I2CInstance = embassy_nrf::peripherals::TWISPI0;
 
 // From espruino. not documented anywhere else, afaik, though...
 const CMD_SLEEP: [u8; 2] = [0xE5, 0x03];
@@ -34,7 +34,7 @@ impl TouchRessources {
         scl: hw::SCL,
         reset: hw::RST,
         irq: hw::IRQ,
-        i2c: &mut I2CInstance,
+        i2c: &mut TWI,
     ) -> Self {
         let mut ret = Self {
             sda,
@@ -51,16 +51,20 @@ impl TouchRessources {
         ret
     }
 
-    pub async fn enabled<'a>(&'a mut self, i2c: &'a mut I2CInstance) -> Touch<'a> {
+    pub async fn enabled<'a>(&'a mut self, i2c: &'a TWI) -> Touch<'a> {
         // These reset durations are the same that espruino uses, so hopefully this works out.
         self.reset.set_low();
         Timer::after(Duration::from_millis(1)).await;
         self.reset.set_high();
         Timer::after(Duration::from_millis(1)).await;
 
+        let i2c_conf = twim::Config::default();
+        // TODO: check if this is allowed
+        //i2c_conf.frequency = embassy_nrf::twim::Frequency::K400;
+
         Touch {
-            hw: self,
-            instance: i2c,
+            irq: &mut self.irq,
+            i2c: i2c.configure(&mut self.sda, &mut self.scl, i2c_conf),
             mode: Mode::Standby,
             enabled_at: Instant::now(),
         }
@@ -68,22 +72,10 @@ impl TouchRessources {
 }
 
 pub struct Touch<'a> {
-    hw: &'a mut TouchRessources,
-    instance: &'a mut I2CInstance,
+    irq: &'a mut Input<'static, hw::IRQ>,
+    i2c: TwiHandle<'a, &'a mut hw::SDA, &'a mut hw::SCL>,
     mode: Mode,
     enabled_at: Instant,
-}
-
-fn build_i2c<'a>(
-    sda: &'a mut hw::SDA,
-    scl: &'a mut hw::SCL,
-    instance: &'a mut I2CInstance,
-) -> twim::Twim<'a, I2CInstance> {
-    let i2c_conf = twim::Config::default();
-    // TODO: check if this is allowed
-    //i2c_conf.frequency = embassy_nrf::twim::Frequency::K400;
-
-    twim::Twim::new(instance, crate::Irqs, sda, scl, i2c_conf)
 }
 
 impl<'a> Drop for Touch<'a> {
@@ -96,7 +88,7 @@ impl<'a> Drop for Touch<'a> {
             embassy_time::Delay.delay_ms((safe_to_sleep - now).as_millis() as u32);
         }
 
-        let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
+        let mut i2c = self.i2c.bind_blocking();
         i2c.blocking_write(hw::ADDR, &CMD_SLEEP).unwrap();
     }
 }
@@ -167,15 +159,15 @@ impl<'a> Touch<'a> {
 
     pub async fn wait_for_event(&mut self) -> TouchEvent {
         if let Mode::Standby = self.mode {
-            if self.hw.irq.is_high() {
-                self.hw.irq.wait_for_low().await;
+            if self.irq.is_high() {
+                self.irq.wait_for_low().await;
             }
         } else {
             embassy_futures::yield_now().await;
         }
         self.mode = Mode::Dynamic;
 
-        let mut i2c = build_i2c(&mut self.hw.sda, &mut self.hw.scl, self.instance);
+        let mut i2c = self.i2c.bind().await;
 
         let mut buf = [0u8; 6];
         i2c.blocking_write_read(hw::ADDR, &CMD_READ_EVENT, &mut buf)

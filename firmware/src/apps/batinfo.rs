@@ -16,7 +16,7 @@ pub async fn battery_info(ctx: &mut Context) {
     //let sl = TextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
     let sl = MonoTextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
@@ -237,8 +237,8 @@ pub async fn battery_calibrate(ctx: &mut Context) {
         next_update += update_period;
 
         {
-            let _touch = ctx.touch.enabled(&mut ctx.twi0).await;
-            let mut mag = ctx.mag.on(&mut ctx.twi1).await;
+            let _touch = ctx.touch.enabled(&ctx.twi).await;
+            let mut mag = ctx.mag.on(&ctx.twi).await;
             let _bl = ctx.backlight.on().await;
             while next_update > Instant::now() {
                 if ctx.button.state() == drivers::button::Level::Low {

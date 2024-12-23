@@ -147,7 +147,7 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
     }
     let mut state = State::default();
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
@@ -168,7 +168,7 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
         text: "Stop",
     });
 
-    let mut hrm = ctx.hrm.on(&mut ctx.twi1).await;
+    let mut hrm = ctx.hrm.on(&ctx.twi).await;
     hrm.enable().await;
     let mut bpm_detector = hrm::HeartbeatDetector::new(SampleCountingEstimator::new());
 

@@ -39,12 +39,12 @@ pub async fn hrm(ctx: &mut Context) {
     //let sl = TextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
     let sl = MonoTextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
 
-    let mut hrm = ctx.hrm.on(&mut ctx.twi1).await;
+    let mut hrm = ctx.hrm.on(&ctx.twi).await;
     hrm.enable().await;
 
     let mut last_bpm = None;
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
@@ -85,6 +85,9 @@ pub async fn hrm(ctx: &mut Context) {
 
     let mut draw_state = DrawState::default();
     let mut last_res = 0u8;
+
+    //let config = drivers::accel::Config::new();
+    //let mut accel = ctx.accel.on(&mut ctx.twi1, config).await;
 
     ctx.lcd.on().await;
     loop {

@@ -1,3 +1,5 @@
+use crate::twi::{TwiHandle, Twim, TWI};
+
 use super::hardware::hrm as hw;
 
 use arrayvec::ArrayVec;
@@ -19,8 +21,6 @@ pub struct HrmRessources {
     irq: Input<'static, hw::IRQ>,
 }
 
-type I2CInstance = embassy_nrf::peripherals::TWISPI1;
-
 impl HrmRessources {
     pub(crate) fn new(sda: hw::SDA, scl: hw::SCL, enabled: hw::EN, irq: hw::IRQ) -> Self {
         Self {
@@ -31,7 +31,7 @@ impl HrmRessources {
         }
     }
 
-    pub async fn on<'a>(&'a mut self, i2c: &'a mut I2CInstance) -> Hrm<'a> {
+    pub async fn on<'a>(&'a mut self, i2c: &'a TWI) -> Hrm<'a> {
         self.enabled.set_high();
         // Wait for boot
         Timer::after(Duration::from_millis(1)).await;
@@ -62,7 +62,7 @@ impl HrmRessources {
         let mut hrm = Hrm {
             enabled: &mut self.enabled,
             irq: &mut self.irq,
-            i2c: twim::Twim::new(i2c, crate::Irqs, &mut self.sda, &mut self.scl, i2c_conf),
+            i2c: i2c.configure(&mut self.sda, &mut self.scl, i2c_conf),
             state,
         };
 
@@ -108,11 +108,48 @@ struct HrmState {
     sample_offset: i16,
 }
 
+impl HrmState {
+    async fn update_slots(&mut self, i2c: &mut Twim<'_>, f: impl FnOnce(u8) -> u8) {
+        self.slots = f(self.slots);
+        i2c.write(hw::ADDR, &[REG_CONFIG_START_ADDR, self.slots])
+            .await
+            .unwrap();
+    }
+
+    async fn update_hrm_led(&mut self, i2c: &mut Twim<'_>, f: impl FnOnce(&mut LedConfig)) {
+        f(&mut self.hrm_led_config);
+        i2c.write(hw::ADDR, &[LED_SLOT0_REG, self.hrm_led_config.to_reg()])
+            .await
+            .unwrap();
+    }
+
+    pub async fn update_hrm_res(&mut self, i2c: &mut Twim<'_>, f: impl FnOnce(&mut PdResConfig)) {
+        f(&mut self.hrm_res_config);
+        i2c.write(hw::ADDR, &[PD_RES_SLOT0_REG, self.hrm_res_config.to_reg()])
+            .await
+            .unwrap();
+    }
+
+    pub async fn update_lo2_res(&mut self, i2c: &mut Twim<'_>, f: impl FnOnce(&mut PdResConfig)) {
+        f(&mut self.lo2_res_config);
+        i2c.write(hw::ADDR, &[PD_RES_SLOT1_REG, self.lo2_res_config.to_reg()])
+            .await
+            .unwrap();
+    }
+
+    pub async fn update_env_res(&mut self, i2c: &mut Twim<'_>, f: impl FnOnce(&mut PdResConfig)) {
+        f(&mut self.env_res_config);
+        i2c.write(hw::ADDR, &[PD_RES_SLOT2_REG, self.env_res_config.to_reg()])
+            .await
+            .unwrap();
+    }
+}
+
 pub struct Hrm<'a> {
     enabled: &'a mut Output<'static, hw::EN>,
     #[allow(unused)]
     irq: &'a mut Input<'static, hw::IRQ>,
-    i2c: twim::Twim<'a, I2CInstance>,
+    i2c: TwiHandle<'a, &'a mut hw::SDA, &'a mut hw::SCL>,
     state: HrmState,
 }
 
@@ -185,12 +222,7 @@ const MAX_SAMPLES_PER_READ: usize = 2 * FIFO_INT_LEN;
 const FIFO_RANGE_BEGIN: usize = 0x80;
 const FIFO_RANGE_END: usize = 0x100;
 
-async fn read_fifo(
-    i2c: &mut twim::Twim<'_, I2CInstance>,
-    start: usize,
-    end: usize,
-    out: &mut [i16],
-) -> usize {
+async fn read_fifo(i2c: &mut Twim<'_>, start: usize, end: usize, out: &mut [i16]) -> usize {
     let addr_diff = (end - start) as usize;
     assert_eq!(addr_diff % 2, 0);
     let samples_available = addr_diff / 2;
@@ -220,8 +252,8 @@ impl<'a> Hrm<'a> {
     pub async fn model_number(&mut self) -> u8 {
         let reg = 0;
         let mut res = 0;
-        self.i2c
-            .write_read(hw::ADDR, &[reg], core::slice::from_mut(&mut res))
+        let mut i2c = self.i2c.bind().await;
+        i2c.write_read(hw::ADDR, &[reg], core::slice::from_mut(&mut res))
             .await
             .unwrap();
         res
@@ -235,13 +267,13 @@ impl<'a> Hrm<'a> {
         let mut buf1 = [0u8; 6];
         let mut buf2 = [0u8; 6];
 
-        self.i2c
-            .write_read(hw::ADDR, &[STATUS_START_REG], &mut buf1)
+        let mut i2c = self.i2c.bind().await;
+
+        i2c.write_read(hw::ADDR, &[STATUS_START_REG], &mut buf1)
             .await
             .unwrap();
 
-        self.i2c
-            .write_read(hw::ADDR, &[SLOT0_LED_CURRENT_REG], &mut buf2)
+        i2c.write_read(hw::ADDR, &[SLOT0_LED_CURRENT_REG], &mut buf2)
             .await
             .unwrap();
 
@@ -266,11 +298,13 @@ impl<'a> Hrm<'a> {
             let now_wearing = read_result.ps_value > PS_WEARING_THRESHOLD;
             match (self.state.wearing, now_wearing) {
                 (true, false) => {
-                    self.update_slots(|s| (s & 0xF8) | 0x04 /* only env sens */)
+                    self.state
+                        .update_slots(&mut i2c, |s| (s & 0xF8) | 0x04 /* only env sens */)
                         .await;
                 }
                 (false, true) => {
-                    self.update_slots(|s| (s & 0xF8) | 0x05 /* env sens + hrm */)
+                    self.state
+                        .update_slots(&mut i2c, |s| (s & 0xF8) | 0x05 /* env sens + hrm */)
                         .await;
                 }
                 _ => {}
@@ -285,7 +319,8 @@ impl<'a> Hrm<'a> {
                 defmt::println!("Overload slot 0!");
                 self.state.hrm_led_max_current -= 1;
                 let max_current = self.state.hrm_led_max_current;
-                self.update_hrm_led(|l| l.current = l.current.min(max_current))
+                self.state
+                    .update_hrm_led(&mut i2c, |l| l.current = l.current.min(max_current))
                     .await;
             }
             if (overload & 0b010) != 0 {
@@ -299,14 +334,13 @@ impl<'a> Hrm<'a> {
         // Read sample
         let sample = if (read_result.irq_status & INT_FIFO) != 0 {
             let mut fifo_write_index = 0u8;
-            self.i2c
-                .write_read(
-                    hw::ADDR,
-                    &[FIFO_WRITE_ADDR_REG],
-                    core::slice::from_mut(&mut fifo_write_index),
-                )
-                .await
-                .unwrap();
+            i2c.write_read(
+                hw::ADDR,
+                &[FIFO_WRITE_ADDR_REG],
+                core::slice::from_mut(&mut fifo_write_index),
+            )
+            .await
+            .unwrap();
 
             let mut fifo_read_index = self.state.fifo_read_index as usize;
             let fifo_write_index = fifo_write_index as usize;
@@ -316,26 +350,21 @@ impl<'a> Hrm<'a> {
 
             if fifo_read_index <= fifo_write_index {
                 // Contiguous region in fifo buffer
-                let num_read = read_fifo(
-                    &mut self.i2c,
-                    fifo_read_index,
-                    fifo_write_index,
-                    &mut samples,
-                )
-                .await;
+                let num_read =
+                    read_fifo(&mut i2c, fifo_read_index, fifo_write_index, &mut samples).await;
                 fifo_read_index += num_read * core::mem::size_of::<Sample>();
                 samples_collected = num_read;
             } else {
                 // Wrapping over end
                 let num_read =
-                    read_fifo(&mut self.i2c, fifo_read_index, FIFO_RANGE_END, &mut samples).await;
+                    read_fifo(&mut i2c, fifo_read_index, FIFO_RANGE_END, &mut samples).await;
                 fifo_read_index += num_read * core::mem::size_of::<Sample>();
                 samples_collected = num_read;
 
                 if fifo_read_index >= FIFO_RANGE_END {
                     fifo_read_index = FIFO_RANGE_BEGIN;
                     let num_read = read_fifo(
-                        &mut self.i2c,
+                        &mut i2c,
                         fifo_read_index,
                         fifo_write_index,
                         &mut samples[num_read..],
@@ -404,18 +433,20 @@ impl<'a> Hrm<'a> {
                 // Act based on adjust mode
                 match self.state.adjust_mode {
                     AdjustMode::Increasing => {
-                        self.update_hrm_led(|l| {
-                            l.current = max_current.min(l.current + 1);
-                            defmt::println!("adjusting current up: {}", l.current);
-                        })
-                        .await;
+                        self.state
+                            .update_hrm_led(&mut i2c, |l| {
+                                l.current = max_current.min(l.current + 1);
+                                defmt::println!("adjusting current up: {}", l.current);
+                            })
+                            .await;
                     }
                     AdjustMode::Decreasing => {
-                        self.update_hrm_led(|l| {
-                            l.current = l.current.saturating_sub(1);
-                            defmt::println!("adjusting current down: {}", l.current);
-                        })
-                        .await;
+                        self.state
+                            .update_hrm_led(&mut i2c, |l| {
+                                l.current = l.current.saturating_sub(1);
+                                defmt::println!("adjusting current down: {}", l.current);
+                            })
+                            .await;
                     }
                     AdjustMode::Stable => {}
                 }
@@ -452,56 +483,19 @@ impl<'a> Hrm<'a> {
         (read_result, sample)
     }
 
-    async fn update_slots(&mut self, f: impl FnOnce(u8) -> u8) {
-        self.state.slots = f(self.state.slots);
-        self.i2c
-            .write(hw::ADDR, &[REG_CONFIG_START_ADDR, self.state.slots])
-            .await
-            .unwrap();
-    }
-
-    async fn update_hrm_led(&mut self, f: impl FnOnce(&mut LedConfig)) {
-        f(&mut self.state.hrm_led_config);
-        self.i2c
-            .write(
-                hw::ADDR,
-                &[LED_SLOT0_REG, self.state.hrm_led_config.to_reg()],
-            )
-            .await
-            .unwrap();
-    }
-
     pub async fn update_hrm_res(&mut self, f: impl FnOnce(&mut PdResConfig)) {
-        f(&mut self.state.hrm_res_config);
-        self.i2c
-            .write(
-                hw::ADDR,
-                &[PD_RES_SLOT0_REG, self.state.hrm_res_config.to_reg()],
-            )
-            .await
-            .unwrap();
+        let mut i2c = self.i2c.bind().await;
+        self.state.update_hrm_res(&mut i2c, f).await;
     }
 
     pub async fn update_lo2_res(&mut self, f: impl FnOnce(&mut PdResConfig)) {
-        f(&mut self.state.lo2_res_config);
-        self.i2c
-            .write(
-                hw::ADDR,
-                &[PD_RES_SLOT1_REG, self.state.lo2_res_config.to_reg()],
-            )
-            .await
-            .unwrap();
+        let mut i2c = self.i2c.bind().await;
+        self.state.update_lo2_res(&mut i2c, f).await;
     }
 
     pub async fn update_env_res(&mut self, f: impl FnOnce(&mut PdResConfig)) {
-        f(&mut self.state.env_res_config);
-        self.i2c
-            .write(
-                hw::ADDR,
-                &[PD_RES_SLOT2_REG, self.state.env_res_config.to_reg()],
-            )
-            .await
-            .unwrap();
+        let mut i2c = self.i2c.bind().await;
+        self.state.update_env_res(&mut i2c, f).await;
     }
 
     pub async fn enable(&mut self) {
@@ -524,16 +518,18 @@ impl<'a> Hrm<'a> {
         let mut buf = [0u8; 18];
         buf[0] = REG_CONFIG_START_ADDR;
         buf[1..].copy_from_slice(bytemuck::bytes_of(&cfg));
-        self.i2c.write(hw::ADDR, &buf).await.unwrap();
+
+        let mut i2c = self.i2c.bind().await;
+        i2c.write(hw::ADDR, &buf).await.unwrap();
         self.state.slots = cfg.slots;
         self.state.hrm_led_config = LedConfig::from_reg(cfg.slot0_led_current);
 
-        self.update_slots(|s| s | 0x80).await;
+        self.state.update_slots(&mut i2c, |s| s | 0x80).await;
     }
 
     pub async fn disable(&mut self) {
-        self.i2c
-            .write(hw::ADDR, &[REG_CONFIG_START_ADDR, 0])
+        let mut i2c = self.i2c.bind().await;
+        i2c.write(hw::ADDR, &[REG_CONFIG_START_ADDR, 0])
             .await
             .unwrap();
     }

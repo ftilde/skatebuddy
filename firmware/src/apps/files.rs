@@ -73,7 +73,7 @@ pub async fn files(ctx: &mut Context) {
 
             if let MenuSelection::Item(f) = crate::apps::menu::paginated_grid_menu::<4, _, _>(
                 &mut ctx.touch,
-                &mut ctx.twi0,
+                &ctx.twi,
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,
@@ -121,7 +121,7 @@ pub async fn file_menu(ctx: &mut Context, path: &Path) {
     loop {
         match crate::apps::menu::paginated_grid_menu::<4, _, _>(
             &mut ctx.touch,
-            &mut ctx.twi0,
+            &ctx.twi,
             &mut ctx.button,
             &mut ctx.lcd,
             &mut ctx.battery,

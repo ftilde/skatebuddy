@@ -14,7 +14,7 @@ pub async fn clock_info(ctx: &mut Context) {
 
     let mut ticker = Ticker::every(Duration::from_secs(60));
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),

@@ -1,7 +1,7 @@
+use crate::twi::{TwiHandle, TWI};
+
 use super::hardware::accel as hw;
 use embassy_nrf::twim;
-
-type I2CInstance = embassy_nrf::peripherals::TWISPI1;
 
 pub use drivers_shared::accel::*;
 
@@ -21,13 +21,13 @@ impl AccelRessources {
         Self { sda, scl }
     }
 
-    pub async fn on<'a>(&'a mut self, instance: &'a mut I2CInstance, config: Config) -> Accel<'a> {
+    pub async fn on<'a>(&'a mut self, instance: &'a TWI, config: Config) -> Accel<'a> {
         Accel::new(self, instance, config).await
     }
 }
 
 pub struct Accel<'a> {
-    i2c: twim::Twim<'a, I2CInstance>, //TODO: We don't want to hold on to this
+    i2c: TwiHandle<'a, &'a mut hw::SDA, &'a mut hw::SCL>,
     config: Config,
 }
 
@@ -35,26 +35,27 @@ impl<'a> Accel<'a> {
     async fn read_registers(&mut self, r_addr: u8, r_buf: &mut [u8]) {
         let wbuf = [r_addr];
 
-        self.i2c.write_read(hw::ADDR, &wbuf, r_buf).await.unwrap();
+        let mut i2c = self.i2c.bind().await;
+        i2c.write_read(hw::ADDR, &wbuf, r_buf).await.unwrap();
     }
     async fn write_register(&mut self, r_addr: u8, w: u8) {
         let wbuf = [r_addr, w];
 
-        self.i2c.write(hw::ADDR, &wbuf).await.unwrap();
+        let mut i2c = self.i2c.bind().await;
+        i2c.write(hw::ADDR, &wbuf).await.unwrap();
     }
 
-    async fn new(
-        hw: &'a mut AccelRessources,
-        instance: &'a mut I2CInstance,
-        config: Config,
-    ) -> Accel<'a> {
+    async fn new(hw: &'a mut AccelRessources, instance: &'a TWI, config: Config) -> Accel<'a> {
         let mut i2c_conf = twim::Config::default();
         i2c_conf.frequency = embassy_nrf::twim::Frequency::K400;
 
-        let i2c = twim::Twim::new(instance, crate::Irqs, &mut hw.sda, &mut hw.scl, i2c_conf);
+        //let i2c = instance.configure(&mut hw.sda, &mut hw.scl, i2c_conf);
 
         let v = config.cntl1.as_raw_slice()[0];
-        let mut s = Self { i2c, config };
+        let mut s = Self {
+            i2c: instance.configure(&mut hw.sda, &mut hw.scl, i2c_conf),
+            config,
+        };
         s.write_register(ADDR_CNTL1, v).await;
 
         //Wait for startup
@@ -92,6 +93,7 @@ impl<'a> Drop for Accel<'a> {
 
         let wbuf = [ADDR_CNTL1, cntl1.as_raw_slice()[0]];
 
-        self.i2c.blocking_write(hw::ADDR, &wbuf).unwrap();
+        let mut i2c = self.i2c.bind_blocking();
+        i2c.blocking_write(hw::ADDR, &wbuf).unwrap();
     }
 }

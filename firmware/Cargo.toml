@@ -34,7 +34,7 @@ hrm = { path = "../hrm" }
 arrayvec = { version = "0.7.4", default-features = false }
 base64 = { version = "0.21.7", default-features = false }
 nalgebra = { version = "0.33.0", default-features = false }
-embedded-icon = { version = "0.0.1", default-features = false, features=["24px", "mdi"] }
+embedded-icon = { version = "0.0.1", default-features = false, features=["24px", "mdi"], doctest=false }
 
 [target.'cfg(target_arch = "arm")'.dependencies]
 defmt = "0.3.5"

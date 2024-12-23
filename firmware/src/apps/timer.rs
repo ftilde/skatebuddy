@@ -44,7 +44,7 @@ pub async fn buzz_msg(ctx: &mut Context, msg: &str) {
     let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
     ctx.backlight.active().await;
 
     let mut ticker = Ticker::every(Duration::from_millis(1500));
@@ -103,7 +103,7 @@ async fn configure_timer(ctx: &mut Context, timer_duration: &mut Duration) -> Fl
     let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
 
     let mut ticker = Ticker::every(Duration::from_secs(1));
 
@@ -230,7 +230,7 @@ async fn run_timer(ctx: &mut Context, timer_duration: Duration) -> TimerResult {
     let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
     ctx.backlight.active().await;
 
     let mut ticker = Ticker::every(Duration::from_secs(1));

@@ -21,7 +21,7 @@ pub async fn stopwatch(ctx: &mut Context) {
     let font = &embedded_graphics::mono_font::ascii::FONT_10X20;
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
     ctx.backlight.active().await;
 
     let button_style = ButtonStyle {

@@ -72,7 +72,7 @@ pub async fn settings_ui(ctx: &mut Context) {
     //let sl = TextStyle::new(font, embedded_graphics::pixelcolor::BinaryColor::On);
     let sl = MonoTextStyle::new(font, Rgb111::white());
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
     ctx.backlight.active().await;
 
     let mut ticker = Ticker::every(Duration::from_secs(60));

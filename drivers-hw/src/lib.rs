@@ -3,16 +3,16 @@
 use embassy_nrf::{
     bind_interrupts,
     gpio::{Input, Pull},
-    peripherals::{TWISPI0, TWISPI1},
     saadc, spim, twim,
 };
+use embassy_sync::mutex::Mutex;
 use embassy_time::Instant;
 use static_cell::StaticCell;
 
 use defmt_rtt as _; //logger
 
 use panic_persist as _;
-//use panic_probe as _; //panic handler //panic handler
+//use panic_probe as _;
 
 pub mod accel;
 pub mod battery;
@@ -27,6 +27,7 @@ pub mod hrm;
 pub mod mag;
 pub mod time;
 pub mod touch;
+mod twi;
 
 mod util;
 
@@ -70,8 +71,7 @@ pub async fn wait_display_event() -> DisplayEvent {
     e
 }
 
-pub type TWI0 = TWISPI0;
-pub type TWI1 = TWISPI1;
+pub use twi::TWI;
 
 pub struct Context {
     pub flash: flash::FlashRessources,
@@ -87,8 +87,7 @@ pub struct Context {
     pub accel: accel::AccelRessources,
     pub hrm: hrm::HrmRessources,
     pub buzzer: buzz::Buzzer,
-    pub twi0: TWI0,
-    pub twi1: TWI1,
+    pub twi: twi::TWI,
     pub last_panic_msg: Option<&'static str>,
 }
 
@@ -98,13 +97,18 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
     conf.dcdc.reg1 = true;
 
     //let core_p = cortex_m::Peripherals::take().unwrap();
-    let mut p = embassy_nrf::init(conf);
+    let p = embassy_nrf::init(conf);
 
     // DO NOT USE! See
     // https://infocenter.nordicsemi.com/index.jsp?topic=%2Ferrata_nRF52840_Rev3%2FERR%2FnRF52840%2FRev3%2Flatest%2Fanomaly_840_195.html
     let _ = p.SPI3;
 
     //dump_peripheral_regs();
+
+    let mut twi = twi::TWI {
+        twi0: Mutex::new(p.TWISPI0),
+        twi1: Mutex::new(p.TWISPI1),
+    };
 
     let battery = battery::Battery::new(p.SAADC, p.P0_03);
     let bat_state = battery::BatteryChargeState::new(p.P0_23, p.P0_25);
@@ -132,8 +136,7 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
 
     let backlight = display::Backlight::new(&spawner, p.P0_08, p.PWM3);
 
-    let touch =
-        touch::TouchRessources::new(p.P1_01, p.P1_02, p.P1_03, p.P1_04, &mut p.TWISPI0).await;
+    let touch = touch::TouchRessources::new(p.P1_01, p.P1_02, p.P1_03, p.P1_04, &mut twi).await;
 
     let gps = gps::GPSRessources::new(
         p.P0_29,
@@ -166,8 +169,7 @@ async fn init(spawner: embassy_executor::Spawner) -> Context {
         accel,
         hrm,
         buzzer,
-        twi0: p.TWISPI0,
-        twi1: p.TWISPI1,
+        twi,
         last_panic_msg: panic_persist::get_panic_message_utf8(),
     }
 }

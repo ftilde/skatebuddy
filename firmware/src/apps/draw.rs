@@ -12,7 +12,7 @@ pub async fn touch_playground(ctx: &mut Context) {
     ctx.lcd.fill(Rgb111::white());
     ctx.lcd.present().await;
 
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
 
     //ctx.backlight.off();
     let mut prev_point = None;

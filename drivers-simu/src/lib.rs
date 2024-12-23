@@ -45,8 +45,7 @@ pub async fn wait_display_event() -> DisplayEvent {
     DISPLAY_EVENT_PIPE.1.recv().await.unwrap()
 }
 
-pub struct TWI0;
-pub struct TWI1;
+pub struct TWI;
 
 pub struct Context {
     pub flash: flash::FlashRessources,
@@ -62,8 +61,7 @@ pub struct Context {
     pub accel: accel::AccelRessources,
     pub hrm: hrm::HrmRessources,
     pub buzzer: buzz::Buzzer,
-    pub twi0: TWI0,
-    pub twi1: TWI1,
+    pub twi: TWI,
     pub last_panic_msg: Option<&'static str>,
 }
 
@@ -104,8 +102,7 @@ pub fn run(main: impl Main) -> ! {
         accel: accel::AccelRessources {},
         buzzer: buzz::Buzzer::new(),
         hrm: hrm::HrmRessources,
-        twi0: TWI0,
-        twi1: TWI1,
+        twi: TWI,
         last_panic_msg: None,
     };
     let _ = smol::block_on(executor.run(main.build(context)));

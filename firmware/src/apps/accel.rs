@@ -11,7 +11,7 @@ pub async fn accel(ctx: &mut Context) {
     let sl = TextStyle::new(&font, embedded_graphics::pixelcolor::BinaryColor::On);
 
     let config = drivers::accel::Config::new();
-    let mut accel = ctx.accel.on(&mut ctx.twi1, config).await;
+    let mut accel = ctx.accel.on(&ctx.twi, config).await;
 
     let mut ticker = Ticker::every(Duration::from_millis(100));
 

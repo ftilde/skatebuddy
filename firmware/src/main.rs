@@ -250,7 +250,7 @@ async fn system_menu(ctx: &mut Context) {
         if let apps::menu::MenuSelection::Item((_, app)) =
             apps::menu::paginated_grid_menu::<4, _, _>(
                 &mut ctx.touch,
-                &mut ctx.twi0,
+                &ctx.twi,
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,
@@ -305,7 +305,7 @@ async fn app_menu(ctx: &mut Context) {
         if let apps::menu::MenuSelection::Item((_, app)) =
             apps::menu::paginated_grid_menu::<4, _, _>(
                 &mut ctx.touch,
-                &mut ctx.twi0,
+                &ctx.twi,
                 &mut ctx.button,
                 &mut ctx.lcd,
                 &mut ctx.battery,

@@ -2,10 +2,8 @@ pub use drivers_shared::accel::*;
 
 pub struct AccelRessources {}
 
-type I2CInstance = crate::TWI1;
-
 impl AccelRessources {
-    pub async fn on<'a>(&'a mut self, _instance: &'a mut I2CInstance, config: Config) -> Accel<'a> {
+    pub async fn on<'a>(&'a mut self, _instance: &'a crate::TWI, config: Config) -> Accel<'a> {
         Accel {
             ressources: self,
             config,

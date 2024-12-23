@@ -14,7 +14,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
     button: T,
 ) -> T {
     ctx.lcd.on().await;
-    let mut touch = ctx.touch.enabled(&mut ctx.twi0).await;
+    let mut touch = ctx.touch.enabled(&ctx.twi).await;
     ctx.backlight.active().await;
 
     let button_style = ButtonStyle {
@@ -114,7 +114,7 @@ pub enum MenuSelection<T> {
 
 pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginated<N, Item = T>>(
     touch: &mut drivers::touch::TouchRessources,
-    twi0: &mut drivers::TWI0,
+    twi: &drivers::TWI,
     button: &mut drivers::button::Button,
     lcd: &mut drivers::display::Display,
     battery: &mut drivers::battery::AsyncBattery,
@@ -123,7 +123,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
 ) -> MenuSelection<T> {
     backlight.active().await;
     lcd.on().await;
-    let mut touch = touch.enabled(twi0).await;
+    let mut touch = touch.enabled(twi).await;
 
     let button_style = ButtonStyle {
         fill: Rgb111::blue(),
