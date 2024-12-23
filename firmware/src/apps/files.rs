@@ -6,7 +6,7 @@ use littlefs2::{
 
 use crate::Context;
 
-use super::menu::{MenuItem, MenuSelection};
+use super::menu::{MenuItem, MenuSelection, Page};
 
 struct FileList<'a> {
     dir: &'a Path,
@@ -64,6 +64,8 @@ pub async fn files(ctx: &mut Context) {
         .await
         .unwrap();
     let mut current_dir: PathBuf = b"\0".into();
+    let mut page = Page::zero();
+
     'outer: loop {
         loop {
             let options = FileList {
@@ -71,16 +73,18 @@ pub async fn files(ctx: &mut Context) {
                 flash: &mut ctx.flash,
             };
 
-            if let MenuSelection::Item(f) = crate::apps::menu::paginated_grid_menu::<4, _, _>(
-                &mut ctx.touch,
-                &ctx.twi,
-                &mut ctx.button,
-                &mut ctx.lcd,
-                &mut ctx.battery,
-                &mut ctx.backlight,
-                options,
-            )
-            .await
+            if let MenuSelection::Item(last_page, f) =
+                crate::apps::menu::paginated_grid_menu::<4, _, _>(
+                    &mut ctx.touch,
+                    &ctx.twi,
+                    &mut ctx.button,
+                    &mut ctx.lcd,
+                    &mut ctx.battery,
+                    &mut ctx.backlight,
+                    options,
+                    page,
+                )
+                .await
             {
                 if f.metadata().is_dir() {
                     current_dir = if f.file_name() == ".." {
@@ -93,8 +97,10 @@ pub async fn files(ctx: &mut Context) {
                     } else {
                         f.path().into()
                     };
+                    page = Page::zero();
                     break;
                 } else {
+                    page = last_page;
                     file_menu(ctx, f.path()).await;
                 }
             } else {
@@ -127,13 +133,14 @@ pub async fn file_menu(ctx: &mut Context, path: &Path) {
             &mut ctx.battery,
             &mut ctx.backlight,
             options.as_slice(),
+            Page::zero(),
         )
         .await
         {
-            MenuSelection::HardwareButton | MenuSelection::Item((_, Opt::Back)) => {
+            MenuSelection::HardwareButton | MenuSelection::Item(_, (_, Opt::Back)) => {
                 return;
             }
-            MenuSelection::Item((_, Opt::Print)) => {
+            MenuSelection::Item(_, (_, Opt::Print)) => {
                 let engine = base64::engine::GeneralPurpose::new(
                     &base64::alphabet::STANDARD,
                     base64::engine::GeneralPurposeConfig::new(),
@@ -164,7 +171,7 @@ pub async fn file_menu(ctx: &mut Context, path: &Path) {
                     .await
                     .unwrap();
             }
-            MenuSelection::Item((_, Opt::Delete)) => {
+            MenuSelection::Item(_, (_, Opt::Delete)) => {
                 let options = [("Really Delete", true), ("Back", false)].into();
 
                 if crate::apps::menu::grid_menu(ctx, options, false).await {

@@ -109,7 +109,15 @@ impl<const N: usize, T: Clone> Paginated<N> for &[T] {
 
 pub enum MenuSelection<T> {
     HardwareButton,
-    Item(T),
+    Item(Page, T),
+}
+
+pub struct Page(usize);
+
+impl Page {
+    pub fn zero() -> Self {
+        Self(0)
+    }
 }
 
 pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginated<N, Item = T>>(
@@ -120,6 +128,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
     battery: &mut drivers::battery::AsyncBattery,
     backlight: &mut drivers::display::Backlight,
     mut options: P,
+    start: Page,
 ) -> MenuSelection<T> {
     backlight.active().await;
     lcd.on().await;
@@ -132,7 +141,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
     };
 
     assert!(options.num_pages().await > 0);
-    let mut page = 0;
+    let mut page = start.0;
 
     'outer: loop {
         let mut i = 0i32;
@@ -180,7 +189,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
                     backlight.active().await;
                     for (btn, app) in &mut buttons {
                         if btn.clicked(&e) {
-                            break 'outer MenuSelection::Item(app.clone());
+                            break 'outer MenuSelection::Item(Page(page), app.clone());
                         }
                     }
 

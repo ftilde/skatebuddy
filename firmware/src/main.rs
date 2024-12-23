@@ -31,6 +31,7 @@ mod log {
     pub(crate) use println;
 }
 
+use apps::menu::Page;
 use log::println;
 
 use arrform::{arrform, ArrForm};
@@ -246,8 +247,10 @@ async fn system_menu(ctx: &mut Context) {
         ("Fmt Flash", App::FormatFlash),
     ];
 
+    let mut page = Page::zero();
+
     loop {
-        if let apps::menu::MenuSelection::Item((_, app)) =
+        if let apps::menu::MenuSelection::Item(last_page, (_, app)) =
             apps::menu::paginated_grid_menu::<4, _, _>(
                 &mut ctx.touch,
                 &ctx.twi,
@@ -256,9 +259,11 @@ async fn system_menu(ctx: &mut Context) {
                 &mut ctx.battery,
                 &mut ctx.backlight,
                 options.as_slice(),
+                page,
             )
             .await
         {
+            page = last_page;
             match app {
                 App::Files => apps::files::files(ctx).await,
                 App::Reset => reset(ctx).await,
@@ -301,8 +306,10 @@ async fn app_menu(ctx: &mut Context) {
         ("System", App::System),
     ];
 
+    let mut page = Page::zero();
+
     loop {
-        if let apps::menu::MenuSelection::Item((_, app)) =
+        if let apps::menu::MenuSelection::Item(last_page, (_, app)) =
             apps::menu::paginated_grid_menu::<4, _, _>(
                 &mut ctx.touch,
                 &ctx.twi,
@@ -311,9 +318,11 @@ async fn app_menu(ctx: &mut Context) {
                 &mut ctx.battery,
                 &mut ctx.backlight,
                 options.as_slice(),
+                page,
             )
             .await
         {
+            page = last_page;
             match app {
                 App::ClockInfo => apps::clockinfo::clock_info(ctx).await,
                 App::BatInfo => apps::batinfo::battery_info(ctx).await,
