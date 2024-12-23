@@ -16,7 +16,7 @@ use util::gps::{KalmanFilter, LazyRefConverter};
 
 use embedded_graphics::image::Image;
 use embedded_graphics::prelude::*;
-use embedded_icon::mdi::size24px::ClockOutline as Time;
+//use embedded_icon::mdi::size24px::ClockOutline as Time;
 use embedded_icon::mdi::size24px::HeartOutline as Heart;
 use embedded_icon::mdi::size24px::Speedometer as Speed;
 use embedded_icon::mdi::size24px::TransitDetour as Distance;
@@ -128,7 +128,7 @@ pub async fn show_pos(ctx: &mut Context, gps: &mut GPSReceiver<'_>) {
     let heart_pulse_icon = Heart::new(Rgb111::white());
     let speed_icon = Speed::new(Rgb111::white());
     let dist_icon = Distance::new(Rgb111::white());
-    let time_icon = Time::new(Rgb111::white());
+    //let time_icon = Time::new(Rgb111::white());
 
     #[derive(Default)]
     struct State {
