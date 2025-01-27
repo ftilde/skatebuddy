@@ -227,13 +227,13 @@ async fn read_fifo(i2c: &mut Twim<'_>, start: usize, end: usize, out: &mut [i16]
     assert_eq!(addr_diff % 2, 0);
     let samples_available = addr_diff / 2;
     let len = out.len().min(samples_available);
-    defmt::println!(
-        "start {}, end {}, out.len {}, len {}",
-        start,
-        end,
-        out.len(),
-        len
-    );
+    //defmt::println!(
+    //    "start {}, end {}, out.len {}, len {}",
+    //    start,
+    //    end,
+    //    out.len(),
+    //    len
+    //);
     if len != 0 {
         let byte_buf: &mut [u8] = bytemuck::cast_slice_mut(&mut out[..len]);
         i2c.write_read(hw::ADDR, &[start.try_into().unwrap()], byte_buf)
@@ -436,7 +436,7 @@ impl<'a> Hrm<'a> {
                         self.state
                             .update_hrm_led(&mut i2c, |l| {
                                 l.current = max_current.min(l.current + 1);
-                                defmt::println!("adjusting current up: {}", l.current);
+                                //defmt::println!("adjusting current up: {}", l.current);
                             })
                             .await;
                     }
@@ -444,7 +444,7 @@ impl<'a> Hrm<'a> {
                         self.state
                             .update_hrm_led(&mut i2c, |l| {
                                 l.current = l.current.saturating_sub(1);
-                                defmt::println!("adjusting current down: {}", l.current);
+                                //defmt::println!("adjusting current down: {}", l.current);
                             })
                             .await;
                     }
@@ -473,13 +473,13 @@ impl<'a> Hrm<'a> {
             //    vc31b_slot_adjust(slotNum);
             //  }
             //}
-            defmt::println!("Samples: {:?}", samples.as_slice());
+            //defmt::println!("Samples: {:?}", samples.as_slice());
             Some(samples)
         } else {
             None
         };
 
-        defmt::println!("HRM read result: {}", read_result);
+        //defmt::println!("HRM read result: {}", read_result);
         (read_result, sample)
     }
 

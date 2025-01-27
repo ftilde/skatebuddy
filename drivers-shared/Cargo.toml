@@ -14,3 +14,4 @@ embedded-hal = "0.2.7"
 embedded-graphics = "0.8.1"
 embedded-hal-async = "1.0.0-rc.3"
 num_enum = { version = "0.7.1", default-features = false }
+modular-bitfield = "0.11"

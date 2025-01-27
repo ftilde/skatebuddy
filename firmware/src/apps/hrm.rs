@@ -86,8 +86,13 @@ pub async fn hrm(ctx: &mut Context) {
     let mut draw_state = DrawState::default();
     let mut last_res = 0u8;
 
-    //let config = drivers::accel::Config::new();
-    //let mut accel = ctx.accel.on(&mut ctx.twi1, config).await;
+    let mut config = drivers::accel::Config::new();
+    config.buf_cntl2.set_mode(drivers::accel::BufMode::Fifo);
+    config.buf_cntl2.set_enabled(1);
+    config
+        .buf_cntl2
+        .set_resolution(drivers::accel::BufRes::Bit16);
+    let mut accel = ctx.accel.on(&ctx.twi, config).await;
 
     ctx.lcd.on().await;
     loop {
@@ -109,6 +114,12 @@ pub async fn hrm(ctx: &mut Context) {
 
                 if let Some(sample_vals) = s {
                     //let _ = writeln!(w, "s: {:?}", sample_vals);
+                    let mut accel_buf = [drivers::accel::Reading::default(); 40];
+
+                    let accel_read = accel.read_buffer(&mut accel_buf).await;
+                    for r in accel_read {
+                        crate::println!("{}", r);
+                    }
 
                     for sample in &sample_vals {
                         let (filtered, bpm) = draw_state.bpm_detector.add_sample(*sample);

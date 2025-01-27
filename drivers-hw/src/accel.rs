@@ -10,6 +10,9 @@ const ADDR_CNTL1: u8 = 0x18;
 
 const ADDR_XHPL: u8 = 0x00;
 const ADDR_XOUTL: u8 = 0x06;
+const ADDR_BUF_STATUS_1: u8 = 0x3c;
+const ADDR_BUF_READ: u8 = 0x3f;
+const ADDR_BUF_CNTL2: u8 = 0x3b;
 
 pub struct AccelRessources {
     sda: hw::SDA,
@@ -51,12 +54,14 @@ impl<'a> Accel<'a> {
 
         //let i2c = instance.configure(&mut hw.sda, &mut hw.scl, i2c_conf);
 
-        let v = config.cntl1.as_raw_slice()[0];
         let mut s = Self {
             i2c: instance.configure(&mut hw.sda, &mut hw.scl, i2c_conf),
             config,
         };
-        s.write_register(ADDR_CNTL1, v).await;
+        s.write_register(ADDR_CNTL1, config.cntl1.into_bytes()[0])
+            .await;
+        s.write_register(ADDR_BUF_CNTL2, config.buf_cntl2.into_bytes()[0])
+            .await;
 
         //Wait for startup
         //TODO: could be more specific basd on config... meh...
@@ -83,15 +88,69 @@ impl<'a> Accel<'a> {
     pub async fn reading_nf(&mut self) -> Reading {
         self.reading_from(ADDR_XOUTL).await
     }
+
+    pub async fn read_buffer<'b>(&mut self, out: &'b mut [Reading]) -> &'b mut [Reading] {
+        let mut i2c = self.i2c.bind().await;
+
+        let bytes_per_reading = match self.config.buf_cntl2.resolution() {
+            BufRes::Bit8 => 3,
+            BufRes::Bit16 => 6,
+        };
+
+        let mut total_readings = 0;
+
+        while total_readings < out.len() {
+            let mut num_bytes = 0u8;
+            i2c.write_read(
+                hw::ADDR,
+                &[ADDR_BUF_STATUS_1],
+                core::slice::from_mut(&mut num_bytes),
+            )
+            .await
+            .unwrap();
+
+            let num_readings = num_bytes / bytes_per_reading;
+
+            if num_readings == 0 {
+                break;
+            }
+
+            let mut buf = [0u8; 6];
+            for _ in 0..num_readings {
+                for o in &mut buf[..bytes_per_reading as usize] {
+                    i2c.write_read(hw::ADDR, &[ADDR_BUF_READ], core::slice::from_mut(o))
+                        .await
+                        .unwrap();
+                }
+
+                let r = &mut out[total_readings];
+                total_readings += 1;
+
+                match self.config.buf_cntl2.resolution() {
+                    BufRes::Bit8 => {
+                        r.x = buf[0] as i8 as i16;
+                        r.y = buf[1] as i8 as i16;
+                        r.z = buf[2] as i8 as i16;
+                    }
+                    BufRes::Bit16 => {
+                        r.x = i16::from_le_bytes(buf[0..2].try_into().unwrap());
+                        r.y = i16::from_le_bytes(buf[2..4].try_into().unwrap());
+                        r.z = i16::from_le_bytes(buf[4..6].try_into().unwrap());
+                    }
+                }
+            }
+        }
+        &mut out[..total_readings]
+    }
 }
 
 impl<'a> Drop for Accel<'a> {
     fn drop(&mut self) {
         let mut cntl1 = self.config.cntl1;
 
-        cntl1.set(7, false); // standby bit
+        cntl1.set_pc1(0); // standby bit
 
-        let wbuf = [ADDR_CNTL1, cntl1.as_raw_slice()[0]];
+        let wbuf = [ADDR_CNTL1, cntl1.into_bytes()[0]];
 
         let mut i2c = self.i2c.bind_blocking();
         i2c.blocking_write(hw::ADDR, &wbuf).unwrap();
