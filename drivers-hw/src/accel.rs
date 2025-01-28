@@ -109,7 +109,8 @@ impl<'a> Accel<'a> {
             .await
             .unwrap();
 
-            let num_readings = num_bytes / bytes_per_reading;
+            let num_readings = (num_bytes / bytes_per_reading) as usize;
+            let num_readings = num_readings.min(out.len() - total_readings);
 
             if num_readings == 0 {
                 break;
