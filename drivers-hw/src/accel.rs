@@ -7,6 +7,8 @@ pub use drivers_shared::accel::*;
 
 const ADDR_CNTL1: u8 = 0x18;
 //const ADDR_CNTL2: u8 = 0x19;
+//const ADDR_CNTL3: u8 = 0x1a;
+const ADDR_ODCNTL: u8 = 0x1b;
 
 const ADDR_XHPL: u8 = 0x00;
 const ADDR_XOUTL: u8 = 0x06;
@@ -59,6 +61,8 @@ impl<'a> Accel<'a> {
             config,
         };
         s.write_register(ADDR_CNTL1, config.cntl1.into_bytes()[0])
+            .await;
+        s.write_register(ADDR_ODCNTL, config.odcntl.into_bytes()[0])
             .await;
         s.write_register(ADDR_BUF_CNTL2, config.buf_cntl2.into_bytes()[0])
             .await;
