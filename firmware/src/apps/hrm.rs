@@ -1,5 +1,6 @@
 use arrform::*;
 use core::fmt::Write;
+use drivers::accel::Reading;
 use drivers::lpm013m1126c::Rgb111;
 use drivers::time::Duration;
 use drivers::{futures::select, time::Instant};
@@ -76,8 +77,11 @@ pub async fn hrm(ctx: &mut Context) {
         Recording {
             since: Instant,
             path: PathBuf,
-            samples: [i16; 5000],
+            samples: [i16; 2000],
             sample: usize,
+            accel_path: PathBuf,
+            accel_samples: [Reading; 2000],
+            accel_sample: usize,
         },
     }
 
@@ -87,6 +91,9 @@ pub async fn hrm(ctx: &mut Context) {
     let mut last_res = 0u8;
 
     let mut config = drivers::accel::Config::new();
+    config
+        .odcntl
+        .set_output_data_rate(drivers::accel::DataRate::Hz25);
     config.buf_cntl2.set_mode(drivers::accel::BufMode::Fifo);
     config.buf_cntl2.set_enabled(1);
     config
@@ -114,12 +121,12 @@ pub async fn hrm(ctx: &mut Context) {
 
                 if let Some(sample_vals) = s {
                     //let _ = writeln!(w, "s: {:?}", sample_vals);
-                    let mut accel_buf = [drivers::accel::Reading::default(); 40];
+                    let mut accel_buf = [Reading::default(); 40];
 
                     let accel_read = accel.read_buffer(&mut accel_buf).await;
-                    for r in accel_read {
-                        crate::println!("{}", r);
-                    }
+                    //for r in accel_read {
+                    //    crate::println!("{}", r);
+                    //}
 
                     for sample in &sample_vals {
                         let (filtered, bpm) = draw_state.bpm_detector.add_sample(*sample);
@@ -134,8 +141,12 @@ pub async fn hrm(ctx: &mut Context) {
                         path,
                         sample,
                         samples,
+                        accel_path,
+                        accel_samples,
+                        accel_sample,
                     } = &mut state
                     {
+                        crate::println!("HRM: {}, Accel: {}", sample_vals.len(), accel_read.len());
                         for val in sample_vals {
                             if *sample == samples.len() {
                                 break;
@@ -143,7 +154,18 @@ pub async fn hrm(ctx: &mut Context) {
                             samples[*sample] = val;
                             *sample += 1;
                         }
-                        if since.elapsed() > Duration::from_secs(1000) || *sample == samples.len() {
+
+                        for val in accel_read {
+                            if *accel_sample == accel_samples.len() {
+                                break;
+                            }
+                            accel_samples[*accel_sample] = *val;
+                            *accel_sample += 1;
+                        }
+                        if since.elapsed() > Duration::from_secs(1000)
+                            || *sample == samples.len()
+                            || *accel_sample == accel_samples.len()
+                        {
                             ctx.flash
                                 .with_fs(|fs| {
                                     fs.open_file_with_options_and_then(
@@ -158,10 +180,30 @@ pub async fn hrm(ctx: &mut Context) {
                                             }
                                             Ok(())
                                         },
+                                    )?;
+                                    fs.open_file_with_options_and_then(
+                                        |o| o.write(true).create(true).append(true),
+                                        &accel_path,
+                                        |file| {
+                                            use littlefs2::io::Write;
+                                            for i in 0..*accel_sample {
+                                                let sample_val = accel_samples[i];
+                                                let content = arrform!(
+                                                    120,
+                                                    "{},{}.{}\n",
+                                                    sample_val.x,
+                                                    sample_val.y,
+                                                    sample_val.z
+                                                );
+                                                file.write_all(content.as_bytes())?;
+                                            }
+                                            Ok(())
+                                        },
                                     )
                                 })
                                 .await
                                 .unwrap();
+
                             state = State::Idle;
                         }
                     }
@@ -234,15 +276,21 @@ pub async fn hrm(ctx: &mut Context) {
             select::Either3::Third(e) => {
                 ctx.backlight.active().await;
                 if record_button.clicked(&e) {
-                    let path = ctx
+                    let (path, accel_path) = ctx
                         .flash
                         .with_fs(|fs| {
                             fs.create_dir_all(b"/hrm/\0".try_into().unwrap())?;
                             for i in 0.. {
                                 let path =
                                     PathBuf::from(arrform!(40, "/hrm/samples{}.bin", i).as_str());
-                                if fs.metadata(&path) == Err(littlefs2::io::Error::NoSuchEntry) {
-                                    return Ok(path);
+                                let accel_path = PathBuf::from(
+                                    arrform!(40, "/hrm/accel_samples{}.bin", i).as_str(),
+                                );
+                                if fs.metadata(&path) == Err(littlefs2::io::Error::NoSuchEntry)
+                                    && fs.metadata(&accel_path)
+                                        == Err(littlefs2::io::Error::NoSuchEntry)
+                                {
+                                    return Ok((path, accel_path));
                                 }
                             }
                             panic!("Too many recordings");
@@ -252,8 +300,11 @@ pub async fn hrm(ctx: &mut Context) {
                     state = State::Recording {
                         since: Instant::now(),
                         path,
-                        samples: [0; 5000],
+                        samples: [0; 2000],
                         sample: 0,
+                        accel_path,
+                        accel_samples: [Default::default(); 2000],
+                        accel_sample: 0,
                     }
                 }
                 if plus_button.clicked(&e) {
