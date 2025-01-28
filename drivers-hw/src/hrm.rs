@@ -57,6 +57,7 @@ impl HrmRessources {
             env_res_config: PdResConfig::from_reg(reg_config.slot2_env_sensitivity),
             adjust_event,
             sample_offset: 0,
+            sample_delay: 840,
         };
 
         let mut hrm = Hrm {
@@ -106,6 +107,7 @@ struct HrmState {
     fifo_read_index: u8,
     adjust_event: Option<AdjustEvent>,
     sample_offset: i16,
+    sample_delay: u16,
 }
 
 impl HrmState {
@@ -140,6 +142,18 @@ impl HrmState {
         i2c.write(hw::ADDR, &[PD_RES_SLOT2_REG, self.env_res_config.to_reg()])
             .await
             .unwrap();
+    }
+
+    pub async fn update_sample_delay(&mut self, i2c: &mut Twim<'_>, f: impl FnOnce(&mut u16)) {
+        f(&mut self.sample_delay);
+        let sample_delay_high = (self.sample_delay >> 8) as u8;
+        let sample_delay_low = (self.sample_delay & 0x00ff) as u8;
+        i2c.write(
+            hw::ADDR,
+            &[SAMPLE_DELAY_REG, sample_delay_high, sample_delay_low],
+        )
+        .await
+        .unwrap();
     }
 }
 
@@ -181,6 +195,7 @@ const INT_ENV: u8 = 0x02;
 const OVERLOAD_MASK: u8 = 0b111;
 
 const REG_CONFIG_START_ADDR: u8 = 0x10;
+const SAMPLE_DELAY_REG: u8 = 0x14;
 const LED_SLOT0_REG: u8 = 0x17;
 const PD_RES_SLOT0_REG: u8 = 0x1A;
 const PD_RES_SLOT1_REG: u8 = 0x1B;
@@ -482,6 +497,11 @@ impl<'a> Hrm<'a> {
         self.state.update_env_res(&mut i2c, f).await;
     }
 
+    pub async fn update_sample_delay(&mut self, f: impl FnOnce(&mut u16)) {
+        let mut i2c = self.i2c.bind().await;
+        self.state.update_sample_delay(&mut i2c, f).await;
+    }
+
     pub async fn enable(&mut self) {
         let mut cfg = RegConfig::default();
 
@@ -495,7 +515,7 @@ impl<'a> Hrm<'a> {
         cfg.slots = 0x45; // VC31B_REG11 heart rate calculation - SLOT2(env) and SLOT0(hr)
 
         // Set up HRM speed - from testing, 200=100hz/10ms, 400=50hz/20ms, 800=25hz/40ms
-        let divisor: u16 = 20 * (hrm_poll_interval as u16);
+        let divisor: u16 = 840; //20 * (hrm_poll_interval as u16);
         cfg.counter_prescaler[0] = (divisor >> 8) as u8;
         cfg.counter_prescaler[1] = (divisor & 255) as u8;
 

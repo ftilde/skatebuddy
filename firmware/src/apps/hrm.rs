@@ -308,14 +308,16 @@ pub async fn hrm(ctx: &mut Context) {
                     }
                 }
                 if plus_button.clicked(&e) {
-                    hrm.update_hrm_res(|c| {
-                        c.res = (c.res + 1).min(7);
+                    hrm.update_sample_delay(|c| {
+                        *c += 1;
+                        defmt::println!("Delay: {}", *c);
                     })
                     .await;
                 }
                 if minus_button.clicked(&e) {
-                    hrm.update_hrm_res(|c| {
-                        c.res = c.res.saturating_sub(1);
+                    hrm.update_sample_delay(|c| {
+                        *c -= 1;
+                        defmt::println!("Delay: {}", *c);
                     })
                     .await;
                 }
