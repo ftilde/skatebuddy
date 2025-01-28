@@ -190,7 +190,7 @@ pub async fn hrm(ctx: &mut Context) {
                                                 let sample_val = accel_samples[i];
                                                 let content = arrform!(
                                                     120,
-                                                    "{},{}.{}\n",
+                                                    "{},{},{}\n",
                                                     sample_val.x,
                                                     sample_val.y,
                                                     sample_val.z
