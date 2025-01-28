@@ -105,12 +105,11 @@ impl<'a> Accel<'a> {
 
         while total_readings < out.len() {
             let mut num_bytes = 0u8;
-            i2c.write_read(
+            i2c.blocking_write_read(
                 hw::ADDR,
                 &[ADDR_BUF_STATUS_1],
                 core::slice::from_mut(&mut num_bytes),
             )
-            .await
             .unwrap();
 
             let num_readings = (num_bytes / bytes_per_reading) as usize;
@@ -123,8 +122,7 @@ impl<'a> Accel<'a> {
             let mut buf = [0u8; 6];
             for _ in 0..num_readings {
                 for o in &mut buf[..bytes_per_reading as usize] {
-                    i2c.write_read(hw::ADDR, &[ADDR_BUF_READ], core::slice::from_mut(o))
-                        .await
+                    i2c.blocking_write_read(hw::ADDR, &[ADDR_BUF_READ], core::slice::from_mut(o))
                         .unwrap();
                 }
 
