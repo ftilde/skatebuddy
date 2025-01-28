@@ -217,6 +217,11 @@ pub type Spectrum = [f32; SPECTRUM_SIZE];
 pub fn spectrum_freqs(s: Spectrum) -> [(f32, f32); SPECTRUM_SIZE] {
     core::array::from_fn(|i| (index_to_bpm(i), s[i]))
 }
+pub fn suppress_from(to_suppress: Spectrum, from: Spectrum) -> Spectrum {
+    let to_suppress = normalize_spectrum_sum(to_suppress);
+    let from = normalize_spectrum_sum(from);
+    core::array::from_fn(|i| to_suppress[i] - from[i])
+}
 pub fn normalize_spectrum_max(s: Spectrum) -> Spectrum {
     let max = s.iter().max_by(|l, r| l.total_cmp(r)).unwrap();
     if *max > 0.0 {
