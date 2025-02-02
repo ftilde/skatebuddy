@@ -64,7 +64,7 @@ pub async fn grid_menu<T: Clone, const N: usize>(
             select::Either::First(_) => break 'outer button,
             select::Either::Second(e) => {
                 ctx.backlight.active().await;
-                crate::println!("BTN: {:?}", e);
+                //crate::println!("BTN: {:?}", e);
                 for (btn, app) in &mut buttons {
                     if btn.clicked(&e) {
                         break 'outer app.clone();
@@ -185,7 +185,7 @@ pub async fn paginated_grid_menu<const N: usize, T: Clone + MenuItem, P: Paginat
             match evt {
                 select::Either::First(_) => break 'outer MenuSelection::HardwareButton,
                 select::Either::Second(e) => {
-                    crate::println!("BTN: {:?}", e);
+                    //crate::println!("BTN: {:?}", e);
                     backlight.active().await;
                     for (btn, app) in &mut buttons {
                         if btn.clicked(&e) {

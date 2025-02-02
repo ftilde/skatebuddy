@@ -176,7 +176,7 @@ impl Display {
     }
 
     pub async fn present(&mut self) {
-        let t = embassy_time::Instant::now();
+        //let t = embassy_time::Instant::now();
         self.with_spi(|buffer, mut spi| async move {
             for buffer_to_present in buffer.lines_for_update() {
                 use embedded_hal_async::spi::SpiDevice;
@@ -190,7 +190,7 @@ impl Display {
             }
         })
         .await;
-        defmt::println!("display present: {}ms", t.elapsed().as_millis());
+        //defmt::println!("display present: {}ms", t.elapsed().as_millis());
     }
 
     pub async fn present_and<R, F: Future<Output = R>>(&mut self, f: F) -> R {

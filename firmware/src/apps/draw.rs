@@ -22,7 +22,7 @@ pub async fn touch_playground(ctx: &mut Context) {
                 break;
             }
             select::Either::Second(e) => {
-                crate::println!("Touch: {:?}", e);
+                //crate::println!("Touch: {:?}", e);
 
                 let point = Point::new(e.x.into(), e.y.into());
                 if let Some(pp) = prev_point {
@@ -33,7 +33,7 @@ pub async fn touch_playground(ctx: &mut Context) {
                         ))
                         .draw(&mut *ctx.lcd)
                         .unwrap();
-                    crate::println!("Draw from {}:{} to {}:{}", point.x, point.y, pp.x, pp.y);
+                    //crate::println!("Draw from {}:{} to {}:{}", point.x, point.y, pp.x, pp.y);
                 }
 
                 prev_point = match e.kind {
@@ -51,7 +51,7 @@ pub async fn touch_playground(ctx: &mut Context) {
         }
         ctx.lcd.present().await;
 
-        crate::println!("we done presenting");
+        //crate::println!("we done presenting");
     };
 
     next
