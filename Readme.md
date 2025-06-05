@@ -28,3 +28,9 @@ Otherwise the debug hardware interface of the watch will not be powered off and 
 All drivers have two implementations: One for the actual watch hardware and one for a simulator.
 This allows testing new firmware versions/new apps without flashing to the watch every time.
 Build and start the simulator using `make simu`.
+
+# License
+
+Copyright 2025 ftilde
+
+This software is subject to the terms of the Mozilla Public License, v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain one at http://mozilla.org/MPL/2.0/.
