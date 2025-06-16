@@ -87,6 +87,11 @@ impl<const N: usize, T> RingBuffer<N, T> {
 
         v
     }
+    pub fn past_value(&self, diff: usize) -> &T {
+        let i = (self.next + N).checked_sub(diff).unwrap() % N;
+        &self.ring_buffer[i]
+    }
+
     pub fn inner(&self) -> &[T; N] {
         &self.ring_buffer
     }

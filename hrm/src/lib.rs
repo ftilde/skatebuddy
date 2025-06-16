@@ -200,19 +200,75 @@ impl Default for FFTEstimator {
     }
 }
 
-const NUM_FFT_SAMPLES: usize = 300;
-const BASE_FREQ_INDEX: usize = bpm_to_fft_index(45);
-const SPECTRUM_SIZE: usize = bpm_to_fft_index(230) - BASE_FREQ_INDEX;
+const MIN_BPM: usize = 45;
+const MAX_BPM: usize = 460;
+const NUM_FFT_SAMPLES: usize = 150;
+const BASE_FREQ_INDEX: usize = bpm_to_fft_index(MIN_BPM);
+pub const SPECTRUM_SIZE: usize = bpm_to_fft_index(MAX_BPM) - BASE_FREQ_INDEX;
 const fn bpm_to_fft_index(bpm: usize) -> usize {
     (bpm * NUM_FFT_SAMPLES * SAMPLE_DELAY_MS) / (60 * 1000)
 }
-//fn bpm_to_index(bpm: f32) -> usize {
-//    ((bpm * NUM_FFT_SAMPLES as f32 * SAMPLE_DELAY_MS as f32) / (60.0 * 1000.0)).round() as usize
-//}
-const fn index_to_bpm(index: usize) -> f32 {
+pub const fn bpm_to_index(bpm: f32) -> usize {
+    ((((bpm * NUM_FFT_SAMPLES as f32 * SAMPLE_DELAY_MS as f32) / (60.0 * 1000.0)) + 0.5) as usize)
+        .wrapping_sub(BASE_FREQ_INDEX)
+}
+pub const fn index_to_bpm(index: usize) -> f32 {
     ((index + BASE_FREQ_INDEX) * 60 * 1000 / (NUM_FFT_SAMPLES * SAMPLE_DELAY_MS)) as f32
 }
 pub type Spectrum = [f32; SPECTRUM_SIZE];
+pub type SpectrumC = [Complex; SPECTRUM_SIZE];
+
+//const HARMONIC_PHASE_CORRECTION: Complex = Complex::new(0.8775825619, 0.4794255386);
+//const HARMONIC_PHASE_CORRECTION: Complex = Complex::new(0.5403023059, 0.8414709848);
+//const HARMONIC_PHASE_CORRECTION: Complex = Complex::new(0.0, -1.0);
+const HARMONIC_PHASE_CORRECTION: Complex = Complex::new(1.0, 0.0);
+//const HARMONIC_PHASE_CORRECTION: Complex = Complex::new(0.9364566873, 0.3507832277);
+//const HARMONIC_PHASE_CORRECTION: Complex = Complex::new(0.7316888689, 0.6816387600);
+
+pub fn harmonic_phase_diff(s: SpectrumC) -> Spectrum {
+    //let mean: SpectrumC = core::array::from_fn(|i| {
+    //    let l_i = i.saturating_sub(1);
+    //    let r_i = (i + 1).min(s.len() - 1);
+    //    s[l_i] + s[i] + s[r_i]
+    //});
+    let squared: SpectrumC = core::array::from_fn(|i| s[i] * s[i]);
+    //let phase_mean = spectrum_phase(mean);
+    core::array::from_fn(|harmonic_i| {
+        let bpm = index_to_bpm(harmonic_i);
+        let base_i = bpm_to_index(bpm * 0.5);
+        assert_eq!(bpm_to_index(bpm), harmonic_i);
+        //assert_eq!(index_to_bpm(harmonic_i), 0.5 * bpm);
+        if base_i < squared.len() {
+            let base = squared[base_i];
+            let harmonic = s[harmonic_i] * HARMONIC_PHASE_CORRECTION;
+
+            let diff = base.arg() - harmonic.arg();
+            (diff + 2.5 * core::f32::consts::TAU) % core::f32::consts::TAU
+        } else {
+            0.0
+        }
+    })
+}
+
+pub fn hrm_enhance(s: SpectrumC) -> Spectrum {
+    //let squared: SpectrumC = core::array::from_fn(|i| s[i] * s[i] / s[i].norm());
+    let squared: SpectrumC = core::array::from_fn(|i| s[i] * s[i]);
+    //let phase_mean = spectrum_phase(mean);
+    core::array::from_fn(|harmonic_i| {
+        let bpm = index_to_bpm(harmonic_i);
+        let base_i = bpm_to_index(bpm * 0.5);
+        assert_eq!(bpm_to_index(bpm), harmonic_i);
+        //assert_eq!(index_to_bpm(harmonic_i), 0.5 * bpm);
+        if base_i < squared.len() {
+            let base = squared[base_i];
+            let harmonic = s[harmonic_i] * HARMONIC_PHASE_CORRECTION;
+
+            (base.re * harmonic.re + base.im * harmonic.im).max(0.0)
+        } else {
+            0.0
+        }
+    })
+}
 
 pub fn spectrum_freqs(s: Spectrum) -> [(f32, f32); SPECTRUM_SIZE] {
     core::array::from_fn(|i| (index_to_bpm(i), s[i]))
@@ -220,7 +276,11 @@ pub fn spectrum_freqs(s: Spectrum) -> [(f32, f32); SPECTRUM_SIZE] {
 pub fn suppress_from(to_suppress: Spectrum, from: Spectrum) -> Spectrum {
     let to_suppress = normalize_spectrum_sum(to_suppress);
     let from = normalize_spectrum_sum(from);
-    core::array::from_fn(|i| to_suppress[i] - from[i])
+    core::array::from_fn(|i| (1.0 - from[i]) * to_suppress[i])
+}
+pub fn suppress_complex(to_suppress: SpectrumC, from: Spectrum) -> SpectrumC {
+    let from = normalize_spectrum_max(from);
+    core::array::from_fn(|i| (1.0 - from[i]) * to_suppress[i])
 }
 pub fn normalize_spectrum_max(s: Spectrum) -> Spectrum {
     let max = s.iter().max_by(|l, r| l.total_cmp(r)).unwrap();
@@ -231,6 +291,15 @@ pub fn normalize_spectrum_max(s: Spectrum) -> Spectrum {
     }
 }
 pub fn normalize_spectrum_sum(s: Spectrum) -> Spectrum {
+    let sum: f32 = s.iter().map(|v| if *v < 0.0 { -*v } else { *v }).sum();
+    if sum > 0.0 {
+        let n = 1.0 / sum;
+        core::array::from_fn(|i| s[i] * n)
+    } else {
+        s
+    }
+}
+pub fn normalize_spectrum_l2(s: Spectrum) -> Spectrum {
     //let sum_sq: f32 = s.iter().map(|v| if *v < 0.0 { -*v } else { *v }).sum();
     let sum_sq: f32 = s.iter().map(|v| v * v).sum();
     if sum_sq > 0.0 {
@@ -284,12 +353,8 @@ impl Default for SparseFFTEstimator {
     }
 }
 
-//const FFT_EXP_BASE: Complex = {
-//    Complex32::
-//};
-
 impl SparseFFTEstimator {
-    pub fn add_sample(&mut self, sample: f32) -> Option<Spectrum> {
+    pub fn add_sample(&mut self, sample: f32) -> Option<SpectrumC> {
         let pos = self.history.next();
         let complete = self.history.is_full();
         let base = Complex::from_polar(1.0, core::f32::consts::TAU / NUM_FFT_SAMPLES as f32);
@@ -304,11 +369,64 @@ impl SparseFFTEstimator {
         }
 
         if complete {
-            Some(core::array::from_fn(|i| self.spectrum[i].norm()))
+            Some(self.spectrum)
         } else {
             None
         }
     }
+}
+
+pub struct SparseFFTEstimatorShort {
+    history: RingBuffer<NUM_FFT_SAMPLES, f32>,
+    spectrum: [Complex; SPECTRUM_SIZE],
+}
+
+impl Default for SparseFFTEstimatorShort {
+    fn default() -> Self {
+        Self {
+            history: RingBuffer::default(),
+            spectrum: core::array::from_fn(|_| Default::default()),
+        }
+    }
+}
+
+const SPARSE_FFT_NUM_PHASES: usize = 2;
+
+impl SparseFFTEstimatorShort {
+    pub fn add_sample(&mut self, sample: f32) -> Option<SpectrumC> {
+        let pos = self.history.next();
+        let complete = self.history.is_full();
+        let base = Complex::from_polar(1.0, core::f32::consts::TAU / NUM_FFT_SAMPLES as f32);
+        let phase_increment = base.powu((pos) as u32);
+        let mut freq_phase_vec = phase_increment.powu(BASE_FREQ_INDEX as u32);
+
+        for (i, v) in self.spectrum.iter_mut().enumerate() {
+            let freq_index = i + BASE_FREQ_INDEX;
+            let phase_len_in_samples = NUM_FFT_SAMPLES / freq_index;
+            let hist_len = SPARSE_FFT_NUM_PHASES * phase_len_in_samples;
+            let old = self.history.past_value(hist_len);
+            *v += freq_phase_vec.scale(sample - old);
+            freq_phase_vec *= phase_increment;
+        }
+        self.history.add(sample);
+
+        if complete {
+            Some(self.spectrum)
+        } else {
+            None
+        }
+    }
+}
+
+//const FFT_EXP_BASE: Complex = {
+//    Complex32::
+//};
+//
+pub fn spectrum_norm(s: SpectrumC) -> Spectrum {
+    core::array::from_fn(|i| s[i].norm())
+}
+pub fn spectrum_phase(s: SpectrumC) -> Spectrum {
+    core::array::from_fn(|i| s[i].arg())
 }
 
 pub struct SpectrumSmoother {
@@ -339,7 +457,7 @@ fn kernel_smooth(spectrum: Spectrum) -> Spectrum {
 impl SpectrumSmoother {
     pub fn add(&mut self, spectrum: Spectrum) -> Spectrum {
         let l = self.spectrum_agg;
-        let r = normalize_spectrum_sum(spectrum);
+        let r = normalize_spectrum_l2(spectrum);
         self.spectrum_agg = core::array::from_fn(|i| {
             let alpha = 0.99;
             l[i] * alpha + r[i] * (1.0 - alpha)
@@ -455,9 +573,6 @@ impl EstimateSampleRate for UncalibratedEstimator {
     }
 }
 
-const MIN_BPM: u16 = 30;
-const MAX_BPM: u16 = 230;
-
 #[derive(PartialEq, Clone, Copy)]
 pub struct BPM(pub u16);
 
@@ -490,7 +605,7 @@ impl<E: EstimateSampleRate> ZeroCrossHeartbeatDetector<E> {
 
                     self.region = BeatRegion::Above;
 
-                    if MIN_BPM <= bpm && bpm < MAX_BPM {
+                    if MIN_BPM as u16 <= bpm && bpm < MAX_BPM as u16 {
                         Some(BPM(bpm))
                     } else {
                         None
@@ -535,6 +650,7 @@ impl<E: EstimateSampleRate> HeartbeatDetector<E> {
         let s_clip = self.gradient_clip.add_value(s);
         let s_hp = self.high_pass.filter(s_clip);
         if let Some(spectrum) = self.freq_detector.add_sample(s_hp) {
+            let spectrum = spectrum_norm(spectrum);
             let spectrum = self.spec_smoother.add(spectrum);
             let bpm = max_bpm(spectrum);
             self.biased_filter.tune(bpm);

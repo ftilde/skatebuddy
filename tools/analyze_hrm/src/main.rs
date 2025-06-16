@@ -1,5 +1,6 @@
 //use goertzel_algorithm::OptimizedGoertzel;
 use biquad::*;
+use hrm::Spectrum;
 //use goertzel_nostd::Parameters;
 use plotpy::{Curve, Plot};
 use realfft::RealFftPlanner;
@@ -32,11 +33,7 @@ fn plot_values_multiple(vals: &[&[(f32, f32)]]) -> Result<(), Box<dyn Error>> {
         plot.add(&curve);
     }
 
-    if let Err(e) = plot
-        .legend()
-        .grid_and_labels("x", "y")
-        .save_and_show("out.svg")
-    {
+    if let Err(e) = plot.legend().grid_and_labels("x", "y").show("out.svg") {
         println!("{}", e);
     }
 
@@ -55,7 +52,59 @@ fn plot_values(vals: &[(f32, f32)]) -> Result<(), Box<dyn Error>> {
     let mut plot = Plot::new();
     plot.add(&curve).grid_and_labels("x", "y");
 
-    if let Err(e) = plot.save_and_show("out.svg") {
+    if let Err(e) = plot.show("out.svg") {
+        println!("{}", e);
+    }
+
+    Ok(())
+}
+//fn plot_phase_diffs(vals: Vec<Spectrum>) -> Result<(), Box<dyn Error>> {
+//    let mut data = vec![Vec::new(); hrm::SPECTRUM_SIZE];
+//    for spec in vals {
+//        for (i, v) in spec.iter().enumerate() {
+//            data[i].push(*v);
+//        }
+//    }
+//
+//    let ticks: Vec<_> = (1..(data.len() + 1)).into_iter().collect();
+//    let labels = (0..hrm::SPECTRUM_SIZE)
+//        .into_iter()
+//        .map(hrm::index_to_bpm)
+//        .collect::<Vec<_>>();
+//    let mut boxes = plotpy::Boxplot::new();
+//    boxes.draw(&data);
+//
+//    // save figure
+//    let mut plot = Plot::new();
+//    plot.add(&boxes).set_ticks_x_labels(&ticks, &labels);
+//    //.set_title("boxplot documentation test")
+//
+//    if let Err(e) = plot.show("out.svg") {
+//        println!("{}", e);
+//    }
+//
+//    Ok(())
+//}
+fn plot_phase_diffs(vals: Vec<Spectrum>) -> Result<(), Box<dyn Error>> {
+    let mut curve = Curve::new();
+    curve.set_line_width(2.0);
+    curve.set_line_style("None");
+    curve.set_marker_style("o");
+    curve.set_marker_size(1.0);
+
+    curve.points_begin();
+    for spec in vals {
+        for (bpm, d) in hrm::spectrum_freqs(spec) {
+            curve.points_add(bpm, d);
+        }
+    }
+    curve.points_end();
+
+    let mut plot = Plot::new();
+    plot.add(&curve).grid_and_labels("x", "y");
+    plot.set_xmin(85.0);
+
+    if let Err(e) = plot.show("out.svg") {
         println!("{}", e);
     }
 
@@ -112,7 +161,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let accel_vals = accel_vals
         .into_iter()
-        .map(|(ms, r)| (ms, (square(r.x) + square(r.y) + square(r.z)).sqrt()))
+        //.map(|(ms, r)| (ms, (square(r.x) + square(r.y) + square(r.z)).sqrt()))
+        //.map(|(ms, r)| (ms, [r.x as f32, r.y as f32, r.z as f32]))
+        .map(|(ms, r)| (ms, [r.x as f32, r.y as f32, r.z as f32]))
         .collect::<Vec<_>>();
     //plot_values(&accel_vals[..])?;
 
@@ -167,14 +218,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut hrm_detector = hrm::ZeroCrossHeartbeatDetector::new(hrm::UncalibratedEstimator);
     //let mut freq_detector = hrm::FFTEstimator::default();
     let mut freq_detector = hrm::SparseFFTEstimator::default();
-    let mut accel_freq_detector = hrm::SparseFFTEstimator::default();
+    let mut accel_freq_detectors: [_; 3] =
+        std::array::from_fn(|_| hrm::SparseFFTEstimator::default());
     let mut spec_smoother = hrm::SpectrumSmoother::default();
+    let mut spec_smoother_supressed = hrm::SpectrumSmoother::default();
     let mut accel_spec_smoother = hrm::SpectrumSmoother::default();
     let mut bpm_vals = Vec::new();
     let mut bpm_vals_freq = Vec::new();
     let mut bpm_vals_freq_smooth = Vec::new();
     let mut bpm_vals_baseline = Vec::new();
     let mut bpm_vals_accel_supressed = Vec::new();
+    let mut bpm_vals_accel_supressed2 = Vec::new();
     let mut accel_vals_freq = Vec::new();
     let mut accel_vals_freq_smooth = Vec::new();
 
@@ -185,13 +239,16 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut biased_filter = hrm::BiasedSampleFilter::new();
 
     let mut accel_spectrum = None;
+    let mut accel_spectrum_smooth = None;
+
+    let mut phase_diffs = Vec::new();
     for (j, (((i, v), (ir, vr)), (act, acv))) in vals
         .iter()
         .zip(raw_vals.iter())
         .zip(accel_vals.iter())
         .enumerate()
     {
-        window.push_back((*ir, *v as f32));
+        window.push_back((*ir, *vr as f32));
         //window.push_back((*ir, (*vr as f32 - prev).abs()));
         let filtered = biased_filter.filter(*vr);
 
@@ -204,9 +261,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         if window.len() == 512 {
             window.pop_front();
         }
-        if let Some(spectrum_accel) = accel_freq_detector.add_sample(*acv as _) {
+        if let [Some(spec_x), Some(spec_y), Some(spec_z)] = std::array::from_fn(|i| {
+            accel_freq_detectors[i]
+                .add_sample(acv[i])
+                .map(hrm::spectrum_norm)
+        }) {
+            let spectrum_accel: Spectrum =
+                //std::array::from_fn(|i| spec_x[i].max(spec_y[i]).max(spec_z[i]));
+                //std::array::from_fn(|i| spec_y[i].max(spec_z[i]));
+                std::array::from_fn(|i| spec_y[i] + spec_z[i]);
+            //std::array::from_fn(|i| spec_z[i]);
+
+            accel_spectrum = Some(spectrum_accel);
             let spectrum = accel_spec_smoother.add(spectrum_accel);
-            accel_spectrum = Some(spectrum);
+            //dbg!(spectrum_accel.iter().cloned().fold(0.0, f32::max));
+            accel_spectrum_smooth = Some(spectrum);
 
             let bpm = hrm::max_bpm(spectrum_accel);
             let bpm_smooth = hrm::max_bpm(spectrum);
@@ -222,25 +291,61 @@ fn main() -> Result<(), Box<dyn Error>> {
                 //plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
             }
         }
-        if let Some(spectrum_orig) = freq_detector.add_sample(*v as _) {
+        if let Some(spectrum_complex) = freq_detector.add_sample(*v as _) {
+            //phase_diffs.clear();
+            phase_diffs.push(hrm::harmonic_phase_diff(spectrum_complex));
+            //let spectrum_orig = hrm::hrm_enhance(spectrum_orig);
+            let spectrum_orig = hrm::spectrum_norm(spectrum_complex);
             let spectrum = spec_smoother.add(spectrum_orig);
 
             let bpm = hrm::max_bpm(spectrum_orig);
             let bpm_smooth = hrm::max_bpm(spectrum);
-            let bpm_suppressed = if let Some(accel_spectrum) = accel_spectrum {
-                let accel_spectrum = hrm::normalize_spectrum_max(accel_spectrum);
+            let bpm_suppressed = if let Some(accel_spectrum) = accel_spectrum_smooth {
                 let suppressed_spectrum = hrm::suppress_from(spectrum, accel_spectrum);
 
                 if j % 512 == 0 {
-                    plot_values_multiple(&[
-                        &hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum)),
-                        &hrm::spectrum_freqs(hrm::normalize_spectrum_max(accel_spectrum)),
-                        &hrm::spectrum_freqs(hrm::normalize_spectrum_max(suppressed_spectrum)),
-                    ])?;
+                    //plot_values_multiple(&[
+                    //    &hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum)),
+                    //    &hrm::spectrum_freqs(hrm::normalize_spectrum_max(accel_spectrum)),
+                    //    &hrm::spectrum_freqs(hrm::normalize_spectrum_max(suppressed_spectrum)),
+                    //])?;
                     //plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
                 }
 
                 hrm::max_bpm(suppressed_spectrum)
+            } else {
+                bpm_smooth
+            };
+            let bpm_suppressed2 = if let Some(accel_spectrum) = accel_spectrum {
+                let suppressed_spectrum = hrm::suppress_complex(spectrum_complex, accel_spectrum);
+                let spectrum = hrm::hrm_enhance(suppressed_spectrum);
+                let spectrum_smooth = spec_smoother_supressed.add(spectrum);
+
+                if j % 150 == 0 {
+                    //plot_values_multiple(&[
+                    //    &hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum)),
+                    //    &hrm::spectrum_freqs(hrm::normalize_spectrum_max(accel_spectrum)),
+                    //    &hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum_smooth)),
+                    //    &hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum)),
+                    //])?;
+                    //plot_values(&window.iter().cloned().collect::<Vec<_>>())?;
+                }
+
+                if j % 50 == 0 {
+                    TODO: proper amplitude based accel filter
+                    plot_values_multiple(&[
+                        &hrm::spectrum_freqs(hrm::normalize_spectrum_max(hrm::spectrum_norm(
+                            suppressed_spectrum,
+                        ))),
+                        &hrm::spectrum_freqs(hrm::normalize_spectrum_max(accel_spectrum)),
+                        &hrm::spectrum_freqs(hrm::normalize_spectrum_max(spectrum)),
+                        //&hrm::spectrum_freqs(hrm::normalize_spectrum_max(suppressed_spectrum)),
+                    ])?;
+                    //plot_phase_diffs(phase_diffs.clone())?;
+                    //phase_diffs.clear();
+                }
+
+                hrm::max_bpm(spectrum_smooth)
             } else {
                 bpm_smooth
             };
@@ -256,20 +361,23 @@ fn main() -> Result<(), Box<dyn Error>> {
             bpm_vals_freq.push((*i, bpm.0 as f32));
             bpm_vals_freq_smooth.push((*i, bpm_smooth.0 as f32));
             bpm_vals_accel_supressed.push((*i, bpm_suppressed.0 as f32));
+            bpm_vals_accel_supressed2.push((*i, bpm_suppressed2.0 as f32));
         }
 
         if let Some(bpm) = baseline_filter.add_sample(*vr).1 {
             bpm_vals_baseline.push((*i, bpm.0 as f32));
         }
     }
+    //plot_phase_diffs(phase_diffs)?;
     plot_values_multiple(&[
         &bpm_vals,
         &bpm_vals_freq,
         &bpm_vals_freq_smooth,
         &bpm_vals_baseline,
-        &accel_vals_freq,
-        &accel_vals_freq_smooth,
+        //&accel_vals_freq,
+        //&accel_vals_freq_smooth,
         &bpm_vals_accel_supressed,
+        &bpm_vals_accel_supressed2,
     ])?;
 
     for (i, o) in vals[50..].iter().zip(indata.iter_mut()) {

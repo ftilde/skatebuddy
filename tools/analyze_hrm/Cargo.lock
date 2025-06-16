@@ -422,9 +422,12 @@ checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
 name = "plotpy"
-version = "1.0.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e94b57c3968896b779266dbbb72e50ea1702f21664b92e1dbb07cb6a642d3ae9"
+checksum = "b4b84d601c212c3d43f2a500f18df9ba9d0ceb096854b265907bf5d3c6dd0a49"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "primal-check"
